@@ -213,3 +213,28 @@ mac_label_set(struct label *label, int slot, intptr_t v)
 	v = mac_label_slot_encode(v);
 	zalloc_ro_update_field(ZONE_ID_MAC_LABEL, label, l_perpolicy[slot], &v);
 }
+
+/*
+ * Phase D44: Exact Text-Layout Late Placement Control.
+ *
+ * Deterministic inert text contribution: exactly 661 NOP instructions (2644 bytes)
+ * in __TEXT_EXEC,__text placed strictly AFTER all critical D44 diagnostic symbols:
+ *   - bsd_autoconf
+ *   - IOServiceJob::pingConfig
+ *   - _IOConfigThread::configThread
+ *   - _IOConfigThread::main
+ *   - IOKitBSDInit
+ *
+ * Placed at the end of mac_label.c (the terminal translation unit of __TEXT_EXEC,__text)
+ * so that all upstream symbol addresses remain perfectly identical to control (delta = 0).
+ */
+__attribute__((naked, noinline, used))
+void
+xzs_inert_layout_pad(void)
+{
+    __asm__ volatile (
+        ".rept 661\n"
+        "nop\n"
+        ".endr\n"
+    );
+}
