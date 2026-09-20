@@ -39,9 +39,11 @@ struct xzsfs_mount {
     lck_mtx_t               lock;           /* Mutex protecting mount and node lists */
 };
 
-/* Instrumentation counters for D5-M3 proof */
+/* Instrumentation counters for D5-M3 and D5-M4 proof */
 extern uint32_t xzsfs_get_vnode_call_count;
 extern uint32_t vnode_create_call_count_from_xzsfs;
+extern uint32_t xzsfs_root_vnode_create_count;
+extern uint32_t xzsfs_root_vnode_reclaim_count;
 extern uint32_t xzsfs_registration_count;
 
 /* Lock group */
@@ -83,5 +85,8 @@ int xzsfs_helper_format_getattr(const struct xzsfs_core_node *node, struct vnode
 
 /* D5-M3 Silicon Diagnostic Probe */
 int xzsfs_d5m3_probe(dev_t rootdev);
+
+/* D5-M4 Silicon Diagnostic Probe */
+int xzsfs_d5m4_probe(dev_t rootdev);
 
 #endif /* _XZSFS_H_ */

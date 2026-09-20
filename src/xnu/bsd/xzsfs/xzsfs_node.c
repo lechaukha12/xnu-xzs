@@ -10,6 +10,8 @@
 
 uint32_t xzsfs_get_vnode_call_count = 0;
 uint32_t vnode_create_call_count_from_xzsfs = 0;
+uint32_t xzsfs_root_vnode_create_count = 0;
+uint32_t xzsfs_root_vnode_reclaim_count = 0;
 
 int
 xzsfs_get_vnode(mount_t mp, struct xzsfs_node *node, vnode_t *vpp)
@@ -53,6 +55,9 @@ xzsfs_get_vnode(mount_t mp, struct xzsfs_node *node, vnode_t *vpp)
     vnode_create_call_count_from_xzsfs++;
     error = vnode_create(VNCREATE_FLAVOR, VCREATESIZE, &vnfs_param, &node->vnode);
     if (error == 0) {
+        if (node->core.object_id == 1U) {
+            xzsfs_root_vnode_create_count++;
+        }
         *vpp = node->vnode;
     }
 
@@ -68,6 +73,9 @@ xzsfs_node_reclaim(struct xzsfs_node *node, vnode_t vp)
     }
 
     lck_mtx_lock(&node->xmp->lock);
+    if (node->core.object_id == 1U) {
+        xzsfs_root_vnode_reclaim_count++;
+    }
     node->vnode = NULL;
     vnode_clearfsnode(vp);
     lck_mtx_unlock(&node->xmp->lock);
