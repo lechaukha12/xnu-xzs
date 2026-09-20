@@ -1331,23 +1331,124 @@ bsdinit_task(void)
 	lock_trace = 1;
 }
 
+/*
+ * Phase D44: BSD Autoconf Dense Diagnostic Breadcrumb (0xD440)
+ *
+ * CRITICAL RULE: D440_TELEMETRY_WATCHDOG_PET=no.
+ * Under NO circumstances does this diagnostic primitive pet the watchdog,
+ * preserving historical timing and watchdog behavior exactly.
+ */
+void
+xzs_d440_crumb(uint32_t step, const char *label)
+{
+	extern int cpu_number(void);
+	extern boolean_t ml_get_interrupts_enabled(void);
+	extern int get_preemption_level(void);
+	extern void xzs_early_puts(const char *);
+	extern void xzs_early_puthex64(uint64_t);
+
+	/* 1. Pre-seed Fastboot restart reason (0x77665500) */
+	volatile uint32_t *restart_reason = (volatile uint32_t *)0x066bf65c;
+	*restart_reason = 0x77665500;
+
+	/* 2. Write to on-chip IMEM SRAM (0x066bf660) */
+	volatile uint32_t *imem = (volatile uint32_t *)0x066bf660;
+	imem[0] = 0x585a5344; /* 'XZSD' */
+	imem[1] = 0xD440;     /* Checkpoint Family */
+	imem[2] = step;       /* Step */
+	imem[3] = imem[3] + 1;/* Monotonic Counter */
+	imem[4] = 0;          /* Fault type */
+	__asm__ volatile("dsb sy" ::: "memory");
+
+	/* 3. Mirror to Persistent DRAM (0x80060020) and clean to PoC */
+	volatile uint32_t *dram = (volatile uint32_t *)0x80060020;
+	dram[0] = 0x585a5344;
+	dram[1] = 0xD440;
+	dram[2] = step;
+	dram[3] = imem[3];
+	__asm__ volatile("dc cvac, %0" : : "r"(dram) : "memory");
+	__asm__ volatile("dsb sy" ::: "memory");
+
+	/* 4. Non-invasive execution context */
+	unsigned int cpu = cpu_number();
+	thread_t th = current_thread();
+	boolean_t intr = ml_get_interrupts_enabled();
+	int preempt = get_preemption_level();
+
+	xzs_early_puts("[D440/0x");
+	xzs_early_puthex64((uint64_t)step);
+	xzs_early_puts("] ");
+	if (label) {
+		xzs_early_puts(label);
+		xzs_early_puts(" ");
+	}
+	xzs_early_puts("CPU=");
+	xzs_early_puthex64((uint64_t)cpu);
+	xzs_early_puts(" TH=");
+	xzs_early_puthex64((uint64_t)(uintptr_t)th);
+	xzs_early_puts(" INT=");
+	xzs_early_puts(intr ? "1" : "0");
+	xzs_early_puts(" PRE=");
+	xzs_early_puthex64((uint64_t)preempt);
+	xzs_early_puts("\n");
+}
+
 kern_return_t
 bsd_autoconf(void)
 {
+	static const struct {
+		uint32_t enter_step;
+		uint32_t return_step;
+		const char *name;
+	} p_diag[] = {
+		{ 0x11, 0x12, "pty_init" },
+		{ 0x13, 0x14, "ptmx_init" },
+		{ 0x15, 0x16, "mdevinit" },
+		{ 0x17, 0x18, "bpf_init" },
+		{ 0x19, 0x1A, "fsevents_init" },
+		{ 0x1B, 0x1C, "random_init" },
+		{ 0x1D, 0x1E, "dtrace_init" },
+		{ 0x1F, 0x20, "helper_init" },
+		{ 0x21, 0x22, "lockstat_init" },
+		{ 0x23, 0x24, "lockprof_init" },
+		{ 0x25, 0x26, "sdt_init" },
+		{ 0x27, 0x28, "systrace_init" },
+		{ 0x29, 0x2A, "fbt_init" },
+		{ 0x2B, 0x2C, "profile_init" },
+	};
+
+	xzs_d440_crumb(0x00, "bsd_autoconf ENTER");
+
+	xzs_d440_crumb(0x01, "kminit ENTER");
 	kminit();
+	xzs_d440_crumb(0x02, "kminit RETURN");
 
 	/*
 	 * Early startup for bsd pseudodevices.
 	 */
+	xzs_d440_crumb(0x10, "pseudo_inits loop ENTER");
 	{
 		struct pseudo_init *pi;
+		int idx = 0;
 
-		for (pi = pseudo_inits; pi->ps_func; pi++) {
+		for (pi = pseudo_inits; pi->ps_func; pi++, idx++) {
+			if (idx < 14) {
+				xzs_d440_crumb(p_diag[idx].enter_step, p_diag[idx].name);
+			}
 			(*pi->ps_func)(pi->ps_count);
+			if (idx < 14) {
+				xzs_d440_crumb(p_diag[idx].return_step, p_diag[idx].name);
+			}
 		}
 	}
+	xzs_d440_crumb(0x2F, "pseudo_inits loop RETURN");
 
-	return IOKitBSDInit();
+	xzs_d440_crumb(0x30, "IOKitBSDInit ENTER");
+	kern_return_t ret = IOKitBSDInit();
+	xzs_d440_crumb(0x3C, "IOKitBSDInit RETURN");
+
+	xzs_d440_crumb(0x90, "bsd_autoconf COMPLETE");
+	return ret;
 }
 
 

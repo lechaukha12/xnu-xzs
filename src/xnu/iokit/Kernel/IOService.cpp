@@ -58,6 +58,8 @@
 #include <IOKit/pwr_mgt/RootDomain.h>
 #include <IOKit/IOCPU.h>
 #include <Exclaves/Exclaves.h>
+
+extern "C" void xzs_d440_crumb(uint32_t step, const char *label);
 #include <kern/cs_blobs.h>
 #include <mach/sync_policy.h>
 #include <mach/thread_info.h>
@@ -1110,6 +1112,7 @@ IOService::registerService( IOOptionBits options )
 void
 IOService::startMatching( IOOptionBits options )
 {
+	xzs_d440_crumb(0x34, "startMatching ENTER");
 	xzs_early_puts("            [startMatch] 1 ENTER\n");
 	IOService * provider;
 	UInt32      prevBusy = 0;
@@ -1173,11 +1176,13 @@ IOService::startMatching( IOOptionBits options )
 			thread_wakeup((event_t) this /*&__state[1]*/ );
 			IOLockUnlock( gIOServiceBusyLock );
 		} else if (!sync || (kIOServiceAsynchronous & options)) {
+			xzs_d440_crumb(0x35, "startJob async ENTER");
 			xzs_early_puts("            [startMatch] 5 startJob async\n");
 			// assertion will be released when matching job is complete
 			releaseAssertion = false;
 			_IOServiceJob::startJob( this, kMatchNubJob, options );
 			xzs_early_puts("            [startMatch] 5 startJob async DONE\n");
+			xzs_d440_crumb(0x3A, "startJob async RETURN");
 		} else {
 			xzs_early_puts("            [startMatch] 5 synchronous match loop\n");
 			do {
@@ -5166,6 +5171,7 @@ IOService::publishResource( const OSSymbol * key, OSObject * value )
 	xzs_early_puts("        [publishResource] setProperty ENTER\n");
 	gIOResources->setProperty( key, value);
 	xzs_early_puts("        [publishResource] setProperty RETURN\n");
+	xzs_d440_crumb(0x32, "publishResource setProperty RETURN");
 
 	if (IORecursiveLockHaveLock( gNotificationLock)) {
 		xzs_early_puts("        [publishResource] notification locked, RETURN\n");
@@ -5173,6 +5179,7 @@ IOService::publishResource( const OSSymbol * key, OSObject * value )
 	}
 
 	gIOResourceGenerationCount++;
+	xzs_d440_crumb(0x33, "registerService ENTER");
 	xzs_early_puts("        [publishResource] registerService ENTER\n");
 	gIOResources->registerService();
 	xzs_early_puts("        [publishResource] registerService RETURN\n");
@@ -5313,9 +5320,11 @@ _IOConfigThread::configThread( const char * name )
 			continue;
 		}
 		thread_t thread;
+		xzs_d440_crumb(0x37, "configThread CREATE REQUESTED");
 		if (KERN_SUCCESS != kernel_thread_start(&_IOConfigThread::main, inst, &thread)) {
 			continue;
 		}
+		xzs_d440_crumb(0x38, "configThread OBJECT RETURNED");
 
 		char threadName[MAXTHREADNAMESIZE];
 		snprintf(threadName, sizeof(threadName), "IOConfigThread_'%s'", name);
@@ -6045,6 +6054,7 @@ _IOConfigThread::main(void * arg, wait_result_t result)
 		IOLog("thread_policy_set(%d)\n", kr);
 	}
 
+	xzs_d440_crumb(0x40, "configThread ENTRY REACHED");
 	xzs_early_puts("                [_IOConfigThread::main] thread started\n");
 	do {
 //	randomDelay();
@@ -6052,6 +6062,7 @@ _IOConfigThread::main(void * arg, wait_result_t result)
 		xzs_early_puts("                [_IOConfigThread::main] semaphore_wait ENTER\n");
 		semaphore_wait( gJobsSemaphore );
 		xzs_early_puts("                [_IOConfigThread::main] semaphore_wait RETURN\n");
+		xzs_d440_crumb(0x41, "configThread WORK STARTED");
 
 		IOTakeLock( gJobsLock );
 		job = (_IOServiceJob *) gJobs->getFirstObject();
@@ -6075,6 +6086,7 @@ _IOConfigThread::main(void * arg, wait_result_t result)
 			switch (job->type) {
 			case kMatchNubJob:
 				nub->doServiceMatch( job->options );
+				xzs_d440_crumb(0x42, "configThread SERVICE MATCH COMPLETED");
 				break;
 
 			default:
@@ -6089,6 +6101,7 @@ _IOConfigThread::main(void * arg, wait_result_t result)
 
 			OSSafeReleaseNULL(nub);
 			OSSafeReleaseNULL(job);
+			xzs_d440_crumb(0x43, "configThread JOB FINISHED");
 
 			IOTakeLock( gJobsLock );
 			alive = (gOutstandingJobs > gNumWaitingThreads);
@@ -6193,6 +6206,7 @@ _IOServiceJob::pingConfig( _IOServiceJob * job )
 	job->release();
 
 	if (create) {
+		xzs_d440_crumb(0x36, "pingConfig ENTER");
 		xzs_early_puts("              [pingConfig] creating configThread\n");
 		if (gIOKitDebug & kIOLogConfig) {
 			LOG("config(%d): creating\n", gNumConfigThreads - 1);
@@ -6204,6 +6218,7 @@ _IOServiceJob::pingConfig( _IOServiceJob * job )
 	xzs_early_puts("              [pingConfig] semaphore_signal\n");
 	semaphore_signal( gJobsSemaphore );
 	xzs_early_puts("              [pingConfig] semaphore_signal DONE\n");
+	xzs_d440_crumb(0x39, "configThread WAKE SIGNAL SENT");
 }
 
 struct IOServiceMatchContext {

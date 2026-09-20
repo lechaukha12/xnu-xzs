@@ -115,10 +115,14 @@ thread_call_t corefile_open_call = NULL;
 SECURITY_READ_ONLY_LATE(const char*) kdp_corefile_path = kIOCoreDumpPath;
 #endif
 
+extern "C" void xzs_d440_crumb(uint32_t step, const char *label);
+
 kern_return_t
 IOKitBSDInit( void )
 {
+	xzs_d440_crumb(0x31, "publishResource(IOBSD) ENTER");
 	IOService::publishResource("IOBSD");
+	xzs_d440_crumb(0x3B, "publishResource(IOBSD) RETURN");
 
 #if IOPOLLED_COREFILE
 	corefile_open_call = thread_call_allocate_with_options(IOOpenPolledCoreFile, NULL, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
