@@ -210,3 +210,22 @@ xzsfs_vfs_register(void)
 
     return error;
 }
+
+/*
+ * Phase D44: Exact Text-Layout Perturbation Control.
+ *
+ * Deterministic inert text contribution: exactly 661 NOP instructions (2644 bytes)
+ * in __TEXT_EXEC,__text to reproduce the exact downstream symbol displacement
+ * observed in the failing M4-linked binary, without introducing any M4 filesystem
+ * semantics, mutable globals, static constructors, or runtime references.
+ */
+__attribute__((naked, noinline, used))
+void
+xzs_inert_layout_pad(void)
+{
+    __asm__ volatile (
+        ".rept 661\n"
+        "nop\n"
+        ".endr\n"
+    );
+}
