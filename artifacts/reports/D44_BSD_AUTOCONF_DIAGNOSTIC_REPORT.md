@@ -17,8 +17,7 @@ KERNEL_FLAT_SHA256=ac5b7fb2c7c8f1edb69d71125277ce23c34cd44327b8aceddb8a2a7425823
 LAST_D440_CHECKPOINT=0xD440/0x90 (bsd_autoconf COMPLETE)
 LAST_OLD_CHECKPOINT=0xD520/0x01 (D5-M3 diagnostic terminal state)
 
-BSD_AUTOCONF_ENTERED=yes
-IOKIT_BSD_INIT_ENTERED=yes
+D44_DIAGNOSTIC_RUN_PASS=yes
 
 CONFIG_THREAD_CREATE_REQUESTED=yes
 CONFIG_THREAD_OBJECT_RETURNED=yes
@@ -29,15 +28,15 @@ CONFIG_THREAD_SERVICE_MATCH_COMPLETED=yes
 
 D45_REACHED=yes
 D510_REACHED=yes
-D520_REACHED=yes
-
 D520_90_REACHED=yes
-RETURN_TIME=+5s
-RETURN_METHOD=twrp_scripted
-FINAL_DEVICE_STATE=fastboot
-MANUAL_INTERVENTION_USED=no
 
-STALL_CLASS=POST_AUTOCONF
+STALL_REPRODUCED=no
+STALL_CLASS=NONE_OBSERVED
+
+D44_INTRINSIC_FAILURE_DEMONSTRATED=no
+
+M4_CAUSALITY=UNPROVEN
+TIMING_OR_BINARY_LAYOUT_SENSITIVITY=possible
 
 PLUS_40S_WATCHDOG_CORRELATION=strong
 APCS_WATCHDOG_CAUSAL=UNPROVEN
@@ -141,17 +140,19 @@ During the hardware run of `465f88c`, every single checkpoint of the `0xD440` fa
 
 ## 5. Critical Diagnostic Deduction
 
-1. **Autoconf Is Deterministic Without M4**:
-   When built on the exact D5-M3 source tree (`7a4232c`) without M4 filesystem code:
-   - `bsd_autoconf()` executed with 100% deterministic success.
-   - All 14 pseudo-device initializers executed without stalling.
-   - IOKit configThread creation, Mach scheduling, cross-core dispatch to CPU 1 and CPU 2, semaphore wait/signal, and service matching executed flawlessly.
+1. **Instrumented Diagnostic Build Completed Successfully**:
+   The diagnostic binary was not identical to the historical D5-M3 binary; it consisted of `7a4232c + D440 telemetry instrumentation`, which altered binary layout, timing, scheduler interleaving, and cache behavior. Under this instrumented state:
+   - `bsd_autoconf()` executed through completion without stalling.
+   - All 14 pseudo-device initializers executed.
+   - IOKit configThread creation, Mach scheduling, cross-core dispatch to CPU 1 and CPU 2, semaphore wait/signal, and service matching executed successfully.
    - Execution continued past `[D45]` into `[D510]` (ramdisk seal) and `[D520]` (D5-M3 suite), completing the entire sequence in 5 seconds.
 
 2. **Classification**:
-   - `STALL_CLASS=POST_AUTOCONF`
-   - The recurring stalls observed in D5-M4 attempts were **not caused by a device-state fault or a hardware race in BSD autoconf**.
-   - Rather, linking the M4 root mount changes altered kernel binary layout, data structures, or execution path in a way that affected scheduler / IOKit matching behavior prior to `0xD530`.
+   - `STALL_REPRODUCED=no`
+   - `STALL_CLASS=NONE_OBSERVED`
+   - `D44_INTRINSIC_FAILURE_DEMONSTRATED=no`: The telemetry does not prove the absence of a race under different binary layouts or timings; it only proves that this instrumented execution completed successfully.
+   - `M4_CAUSALITY=UNPROVEN`: Whether the failure in M4 attempts is caused by filesystem logic, binary layout, or timing sensitivity remains unproven.
+   - `TIMING_OR_BINARY_LAYOUT_SENSITIVITY=possible`.
 
 ---
 
