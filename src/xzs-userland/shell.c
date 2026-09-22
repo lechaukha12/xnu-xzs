@@ -52,11 +52,33 @@ werr(const char *s)
 }
 
 static int
-read_line(char *buf, int cap)
+drain_to_eol(char *tmp, long r, long i, int *swallow_lf)
+{
+	for (;;) {
+		for (; i < r; i++) {
+			if (tmp[i] == '\r') {
+				*swallow_lf = 1;
+				return 0;
+			}
+			if (tmp[i] == '\n') {
+				*swallow_lf = 0;
+				return 0;
+			}
+		}
+		r = xzs_svc(SYS_READ, 0, (long)tmp, 64, 0);
+		i = 0;
+		if (r <= 0) {
+			return -1;
+		}
+	}
+}
+
+static int
+read_line(char *buf, int cap, int *swallow_lf)
 {
 	int n = 0;
 
-	while (n + 1 < cap) {
+	for (;;) {
 		char tmp[64];
 		long r = xzs_svc(SYS_READ, 0, (long)tmp, (long)sizeof(tmp), 0);
 		long i;
@@ -66,15 +88,33 @@ read_line(char *buf, int cap)
 			return -1;
 		}
 		if (r == 0) {
-			break;
+			buf[n] = 0;
+			return n;
 		}
 		for (i = 0; i < r; i++) {
 			char c = tmp[i];
-			if (c == '\n' || c == '\r') {
+
+			if (c == '\n' && *swallow_lf) {
+				*swallow_lf = 0;
+				continue;
+			}
+			*swallow_lf = 0;
+			if (c == '\r' || c == '\n') {
+				if (c == '\r') {
+					*swallow_lf = 1;
+				}
 				buf[n] = 0;
 				return n;
 			}
+			if (c == 0x08 || c == 0x7f) {
+				if (n > 0) {
+					n--;
+					wr("\b \b");
+				}
+				continue;
+			}
 			if (n + 1 >= cap) {
+				(void)drain_to_eol(tmp, r, i, swallow_lf);
 				buf[0] = 0;
 				wr("line too long\n");
 				return -2;
@@ -82,8 +122,6 @@ read_line(char *buf, int cap)
 			buf[n++] = c;
 		}
 	}
-	buf[n] = 0;
-	return n;
 }
 
 static void
@@ -349,11 +387,15 @@ xzs_d7t2_shell(void)
 
 	cwd[0] = '/';
 	cwd[1] = 0;
+	{
+	int swallow_lf = 0;
 	for (;;) {
 		int argc;
+		int got;
 
 		wr("xzs# ");
-		if (read_line(line, LINE_MAX) < 0) {
+		got = read_line(line, LINE_MAX, &swallow_lf);
+		if (got < 0) {
 			continue;
 		}
 		argc = xzs_split_args(line, argv, ARG_MAX);
@@ -383,5 +425,6 @@ xzs_d7t2_shell(void)
 		} else {
 			run_external(argc, argv);
 		}
+	}
 	}
 }

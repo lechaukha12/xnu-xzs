@@ -224,6 +224,220 @@ def test_loopback(dev, timeout_ms=3000):
         return False
 
 
+HARD_BACKEND = {-1, -4, -9, -99}
+MAX_CONSECUTIVE_HARD_USB_ERRORS = 3
+usb_hard_errors = 0
+usb_timeouts = 0
+
+
+def is_hard_usb(exc):
+    if isinstance(exc, usb.core.USBTimeoutError):
+        return False
+    if not isinstance(exc, usb.core.USBError):
+        return False
+    code = getattr(exc, "backend_error_code", None)
+    if code in HARD_BACKEND:
+        return True
+    text = str(exc).lower()
+    return ("other error" in text or "no device" in text or "pipe" in text)
+
+
+def note_timeout():
+    global usb_timeouts
+    usb_timeouts += 1
+
+
+def note_hard():
+    global usb_hard_errors
+    usb_hard_errors += 1
+
+
+def release_device(dev):
+    if dev is None:
+        return
+    try:
+        usb.util.dispose_resources(dev)
+    except Exception:
+        pass
+
+
+def claim_device(dev):
+    """Claim interface 0. One attempt. Hard errors are counted by the caller."""
+    try:
+        if dev.is_kernel_driver_active(0):
+            dev.detach_kernel_driver(0)
+    except usb.core.USBError as exc:
+        if is_hard_usb(exc):
+            note_hard()
+            print(f"USB_DETACH=FAIL ({exc})")
+            return False
+    configured = False
+    try:
+        dev.get_active_configuration()
+        configured = True
+    except usb.core.USBError as exc:
+        if isinstance(exc, usb.core.USBTimeoutError):
+            note_timeout()
+        elif is_hard_usb(exc):
+            note_hard()
+    if not configured:
+        try:
+            dev.set_configuration()
+            configured = True
+        except usb.core.USBError as exc:
+            if isinstance(exc, usb.core.USBTimeoutError):
+                note_timeout()
+            elif is_hard_usb(exc):
+                note_hard()
+            print(f"USB_SET_CONFIGURATION=FAIL ({exc})")
+            return False
+    try:
+        usb.util.claim_interface(dev, 0)
+    except usb.core.USBError as exc:
+        if "already" not in str(exc).lower():
+            if isinstance(exc, usb.core.USBTimeoutError):
+                note_timeout()
+            elif is_hard_usb(exc):
+                note_hard()
+            print(f"USB_CLAIM=FAIL ({exc})")
+            return False
+    return True
+
+
+def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
+    """
+    Wait until the gadget accepts a configuration claim.
+    Hard errors are spaced and stop at three in a row. Absence of the
+    device resets that streak and is not a transfer error.
+    """
+    deadline = time.time() + timeout_sec
+    streak = 0
+    while time.time() < deadline and streak < MAX_CONSECUTIVE_HARD_USB_ERRORS:
+        dev = find_xzs_device(vid, pid)
+        if dev is None:
+            streak = 0
+            time.sleep(0.25)
+            continue
+        time.sleep(0.8)
+        dev = find_xzs_device(vid, pid)
+        if dev is None:
+            streak = 0
+            continue
+        before = usb_hard_errors
+        if claim_device(dev):
+            print("USB_DEVICE_FOUND=yes")
+            print("VID_PID=1209:000A")
+            print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+            print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+            return dev
+        release_device(dev)
+        if usb_hard_errors > before:
+            streak += 1
+        print(f"USB_CLAIM_STREAK={streak}")
+        time.sleep(1.0)
+    print("USB_DEVICE_FOUND=no" if streak < MAX_CONSECUTIVE_HARD_USB_ERRORS else "USB_DEVICE_FOUND=wedged")
+    print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+    print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+    print("USB_DATA_PLANE=stopped")
+    return None
+
+
+def bulk_write(dev, payload, timeout_ms=2000):
+    try:
+        written = dev.write(EP_BULK_OUT, payload, timeout=timeout_ms)
+        return int(written), None
+    except usb.core.USBTimeoutError:
+        note_timeout()
+        return 0, "timeout"
+    except usb.core.USBError as exc:
+        if is_hard_usb(exc):
+            note_hard()
+            return 0, "hard"
+        note_timeout()
+        return 0, "timeout"
+
+
+def bulk_read(dev, timeout_ms=2000):
+    try:
+        data = dev.read(EP_BULK_IN, 512, timeout=timeout_ms)
+        return bytes(data), None
+    except usb.core.USBTimeoutError:
+        note_timeout()
+        return b"", "timeout"
+    except usb.core.USBError as exc:
+        if is_hard_usb(exc):
+            note_hard()
+            return b"", "hard"
+        note_timeout()
+        return b"", "timeout"
+
+
+def transport_handshake(dev):
+    """Sealed Z2/Z3/Z4 bring-up. Stops after three consecutive hard errors."""
+    streak = 0
+
+    def broken(kind):
+        nonlocal streak
+        if kind == "hard":
+            streak += 1
+        else:
+            streak = 0
+        return streak >= MAX_CONSECUTIVE_HARD_USB_ERRORS
+
+    written, kind = bulk_write(dev, DEFAULT_BULK_OUT_PAYLOAD, timeout_ms=2000)
+    print(f"BULK_OUT_BYTES_WRITTEN={written}")
+    if kind is not None or written != len(DEFAULT_BULK_OUT_PAYLOAD):
+        print("BULK_OUT=FAIL")
+        print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+        print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+        return False
+    print("BULK_OUT=PASS")
+    streak = 0
+
+    data = b""
+    for _ in range(4):
+        chunk, kind = bulk_read(dev, timeout_ms=1000)
+        if kind == "hard" and broken(kind):
+            print("BULK_IN=FAIL")
+            return False
+        if chunk:
+            data += chunk
+            if data == b"XZS-BULK-IN-TEST\n":
+                break
+        if kind == "timeout":
+            continue
+    if data != b"XZS-BULK-IN-TEST\n":
+        print("BULK_IN=FAIL")
+        print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+        print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+        return False
+    print("BULK_IN=PASS")
+
+    written, kind = bulk_write(dev, DEFAULT_LOOPBACK_PAYLOAD, timeout_ms=2000)
+    if kind is not None or written != len(DEFAULT_LOOPBACK_PAYLOAD):
+        print("LOOPBACK=FAIL")
+        return False
+    echo = b""
+    for _ in range(4):
+        chunk, kind = bulk_read(dev, timeout_ms=1000)
+        if kind == "hard" and broken(kind):
+            print("LOOPBACK=FAIL")
+            return False
+        if chunk:
+            echo += chunk
+            if echo == DEFAULT_LOOPBACK_PAYLOAD:
+                break
+    if echo != DEFAULT_LOOPBACK_PAYLOAD:
+        print("LOOPBACK=FAIL")
+        print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+        print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+        return False
+    print("LOOPBACK=PASS")
+    print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+    print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+    return True
+
+
 def interactive_console(dev):
     """
     Mode 8: Interactive Console Mode
@@ -231,20 +445,31 @@ def interactive_console(dev):
     """
     print("[XZS-CONSOLE] Entering live interactive console (Press Ctrl-] or Ctrl-C to exit)...")
     stop_event = threading.Event()
+    hard_streak = {"n": 0}
 
     def reader_thread():
         while not stop_event.is_set():
             try:
                 data = dev.read(EP_BULK_IN, 512, timeout=100)
+                hard_streak["n"] = 0
                 if data:
                     sys.stdout.buffer.write(bytes(data))
                     sys.stdout.buffer.flush()
             except usb.core.USBTimeoutError:
+                note_timeout()
                 continue
-            except usb.core.USBError as e:
+            except usb.core.USBError as exc:
+                if is_hard_usb(exc):
+                    note_hard()
+                    hard_streak["n"] += 1
+                    if hard_streak["n"] >= MAX_CONSECUTIVE_HARD_USB_ERRORS:
+                        print("\n[XZS-CONSOLE] stopping after 3 hard USB errors", file=sys.stderr)
+                        stop_event.set()
+                        break
+                else:
+                    note_timeout()
                 if not stop_event.is_set():
                     time.sleep(0.05)
-                continue
             except Exception:
                 break
 
@@ -279,10 +504,14 @@ def interactive_console(dev):
                     break
                 if ch == b'\x1d':  # Ctrl-]
                     break
-                try:
-                    dev.write(EP_BULK_OUT, ch, timeout=1000)
-                except usb.core.USBError as e:
-                    pass
+                written, kind = bulk_write(dev, ch, timeout_ms=1000)
+                if kind == "hard" or written != len(ch):
+                    hard_streak["n"] += 1
+                    if hard_streak["n"] >= MAX_CONSECUTIVE_HARD_USB_ERRORS:
+                        print("\n[XZS-CONSOLE] stopping after 3 hard USB errors", file=sys.stderr)
+                        break
+                else:
+                    hard_streak["n"] = 0
     except Exception:
         pass
     finally:
@@ -298,7 +527,8 @@ def main():
     parser.add_argument("--test-bulk-in", action="store_true", help="Read payload from Bulk IN (bounded timeout)")
     parser.add_argument("--test-loopback", action="store_true", help="Perform Bulk OUT -> Bulk IN loopback test")
     parser.add_argument("--interactive", action="store_true", help="Launch live interactive console")
-    parser.add_argument("--timeout", type=int, default=5, help="Device search timeout in seconds (default: 5)")
+    parser.add_argument("--no-handshake", action="store_true", help="Skip the sealed bulk bring-up and talk to an already open shell")
+    parser.add_argument("--timeout", type=int, default=120, help="Device search timeout in seconds (default: 120)")
     parser.add_argument("--vid", type=lambda x: int(x, 0), default=TARGET_VID, help="Target USB VID (default: 0x1209)")
     parser.add_argument("--pid", type=lambda x: int(x, 0), default=TARGET_PID, help="Target USB PID (default: 0x000A)")
 
@@ -309,26 +539,7 @@ def main():
         dev = test_enumeration(timeout_sec=args.timeout, vid=args.vid, pid=args.pid)
         sys.exit(0 if dev is not None else 1)
 
-    # For other modes, find and open the device first
-    dev = find_xzs_device(vid=args.vid, pid=args.pid)
-    if dev is None and args.timeout > 0:
-        start = time.time()
-        while time.time() - start < args.timeout:
-            dev = find_xzs_device(vid=args.vid, pid=args.pid)
-            if dev is not None:
-                break
-            time.sleep(0.2)
-
-    if dev is not None:
-        try:
-            if dev.is_kernel_driver_active(0):
-                dev.detach_kernel_driver(0)
-        except Exception:
-            pass
-        try:
-            dev.set_configuration()
-        except Exception:
-            pass
+    dev = open_stable_device(timeout_sec=args.timeout, vid=args.vid, pid=args.pid)
 
     if args.test_bulk_out is not None:
         payload = None if args.test_bulk_out == "DEFAULT" else args.test_bulk_out
@@ -345,8 +556,14 @@ def main():
 
     if args.interactive or (not args.test_enum and args.test_bulk_out is None and not args.test_bulk_in and not args.test_loopback):
         if dev is None:
-            print(f"[XZS-CONSOLE] ERROR: USB device {args.vid:04x}:{args.pid:04x} not found within {args.timeout}s.", file=sys.stderr)
+            print(f"[XZS-CONSOLE] ERROR: USB device {args.vid:04x}:{args.pid:04x} not usable within {args.timeout}s.", file=sys.stderr)
             sys.exit(1)
+        if not args.no_handshake:
+            if not transport_handshake(dev):
+                print("[XZS-CONSOLE] ERROR: bulk transport did not come up. Not sending shell traffic.", file=sys.stderr)
+                print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+                print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+                sys.exit(1)
         interactive_console(dev)
 
 

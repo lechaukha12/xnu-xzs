@@ -413,7 +413,7 @@ void bootshim_main(uint64_t dtb_phys, uint64_t current_el, uint64_t mpidr) {
     uint32_t dram_crc = shim_crc32(rd_dst, rootfs_len);
     uart_puts("  R2_DRAM_COPY_COMPLETE:        yes\n");
     uart_puts("  R2_LOGICAL_IMAGE_CRC:         0x"); uart_puthex64((uint64_t)dram_crc); uart_puts("\n");
-    uart_puts("  R2_LOGICAL_IMAGE_CRC_MATCH:   "); uart_puts(dram_crc == 0x19c75a24 ? "yes\n" : "no\n");
+    uart_puts("  R2_LOGICAL_IMAGE_CRC_MATCH:   "); uart_puts(dram_crc == 0x07caf17b ? "yes\n" : "no\n");
     uart_puts("  R2_PADDING_ZERO:              "); uart_puts(pad_ok ? "yes\n" : "no\n");
 
     /* Checkpoint E: Construct Apple Device Tree (ADT) */

@@ -112,6 +112,9 @@ volatile uint32_t g_xzs_usb_tx_drops = 0;
 volatile uint32_t g_xzs_usb_t1z_activation_pending = 0;
 /* Nonzero only for a diagnostic build. Normal runtime never halts on this. */
 volatile uint32_t g_xzs_diag_live_window_ms = 0;
+/* Disarmed once the tty bridge is up. Not part of normal shell semantics. */
+volatile uint32_t g_xzs_diag_autorecover_ms = 60000;
+volatile uint32_t g_xzs_diag_autorecover_armed = 1;
 volatile uint32_t g_xzs_usb_t1z_worker_entered = 0;
 volatile uint32_t g_xzs_usb_t1z_config_in_hard_irq = 0;
 volatile uint32_t g_xzs_usb_t1z_failed = 0;
@@ -1415,6 +1418,8 @@ xzs_t1y_handle_setup(void)
 	xzs_t1y_stall_and_restart();
 }
 
+static void xzs_t1z_forget_bulk_after_bus_reset(void);
+
 static void
 xzs_t1y_ep0_only_reset(void)
 {
@@ -1438,6 +1443,12 @@ xzs_t1y_ep0_only_reset(void)
 	} else {
 		s_t1y_ep0_state = XZS_T1Y_EP0_SETUP;
 	}
+	/*
+	 * A bus reset drops bulk endpoint state. Allow the next
+	 * SET_CONFIGURATION to run the existing Z worker again so a
+	 * later host can reconnect. This does not halt the kernel.
+	 */
+	xzs_t1z_forget_bulk_after_bus_reset();
 }
 
 /*
@@ -1473,6 +1484,19 @@ static const uint8_t s_t1z_in_payload[] = {
 };
 
 static volatile uint32_t s_t1z_phase = XZS_T1Z_PHASE_IDLE;
+
+static void
+xzs_t1z_forget_bulk_after_bus_reset(void)
+{
+	g_xzs_usb_t1z_worker_entered = 0;
+	g_xzs_usb_t1z_activation_pending = 0;
+	g_xzs_usb_t1z_failed = 0;
+	g_xzs_usb_t1z_ep2_configured = 0;
+	g_xzs_usb_t1z_ep3_configured = 0;
+	g_xzs_usb_t1z_pipeline_done = 0;
+	g_xzs_usb_tty_bridge = 0;
+	s_t1z_phase = XZS_T1Z_PHASE_IDLE;
+}
 
 static int
 xzs_t1z_prove(const void *obj, uint32_t size, uint32_t align,

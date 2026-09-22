@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
     assert(err == XZSFS_ERR_OK && bytes_read == 16736);
     uint32_t sh_crc = xzsfs_crc32(0, sh_buf, bytes_read);
     printf("[PASS] /bin/sh: size=%zu, CRC32=0x%08x\n", bytes_read, sh_crc);
-    assert(sh_crc == 0x92e0643a);
+    assert(sh_crc == 0xe03e4251);
 
     /* Partial & Unaligned Read Tests */
     /* 1. First byte */
