@@ -9,6 +9,8 @@ Bulk IN:  EP 0x81 (Xperia -> Host)
 
 import sys
 import os
+import logging
+import platform
 import time
 import argparse
 import select
@@ -16,6 +18,7 @@ import termios
 import tty
 import threading
 import signal
+from ctypes import c_int, c_uint16, c_char_p, Structure, byref, POINTER
 
 try:
     import usb.core
@@ -261,78 +264,188 @@ def release_device(dev):
         pass
 
 
-def claim_device(dev):
-    """Claim interface 0. macOS libusb rejects driver-detach queries; ignore those."""
-    try:
-        if dev.is_kernel_driver_active(0):
-            dev.detach_kernel_driver(0)
-    except Exception:
-        pass
-    configured = False
-    try:
-        dev.get_active_configuration()
-        configured = True
-    except usb.core.USBError as exc:
-        if isinstance(exc, usb.core.USBTimeoutError):
-            note_timeout()
-        elif is_hard_usb(exc):
-            note_hard()
-    if not configured:
+EXPECTED_CONFIGURATION = 1
+EXPECTED_INTERFACE = 0
+LIBUSB_ERROR_NAMES = {
+    0: "LIBUSB_SUCCESS",
+    -1: "LIBUSB_ERROR_IO",
+    -2: "LIBUSB_ERROR_INVALID_PARAM",
+    -3: "LIBUSB_ERROR_ACCESS",
+    -4: "LIBUSB_ERROR_NO_DEVICE",
+    -5: "LIBUSB_ERROR_NOT_FOUND",
+    -6: "LIBUSB_ERROR_BUSY",
+    -7: "LIBUSB_ERROR_TIMEOUT",
+    -8: "LIBUSB_ERROR_OVERFLOW",
+    -9: "LIBUSB_ERROR_PIPE",
+    -10: "LIBUSB_ERROR_INTERRUPTED",
+    -11: "LIBUSB_ERROR_NO_MEM",
+    -12: "LIBUSB_ERROR_NOT_SUPPORTED",
+    -99: "LIBUSB_ERROR_OTHER",
+}
+
+
+class _LibusbVersion(Structure):
+    _fields_ = [
+        ("major", c_uint16),
+        ("minor", c_uint16),
+        ("micro", c_uint16),
+        ("nano", c_uint16),
+        ("rc", c_char_p),
+        ("describe", c_char_p),
+    ]
+
+
+def libusb_error_name(rc):
+    return LIBUSB_ERROR_NAMES.get(int(rc), "LIBUSB_ERROR_" + str(int(rc)))
+
+
+def host_versions():
+    pyusb_version = getattr(usb, "__version__", "unknown") if HAVE_PYUSB else "missing"
+    libusb_version = "unknown"
+    if HAVE_PYUSB:
         try:
-            dev.set_configuration()
-            configured = True
-        except usb.core.USBError as exc:
-            if isinstance(exc, usb.core.USBTimeoutError):
-                note_timeout()
-            elif is_hard_usb(exc):
-                note_hard()
-            print(f"USB_SET_CONFIGURATION=FAIL ({exc})")
-            return False
-    try:
-        usb.util.claim_interface(dev, 0)
-    except usb.core.USBError as exc:
-        if "already" not in str(exc).lower():
-            if isinstance(exc, usb.core.USBTimeoutError):
-                note_timeout()
-            elif is_hard_usb(exc):
-                note_hard()
-            print(f"USB_CLAIM=FAIL ({exc})")
-            return False
-    return True
+            backend = usb.backend.libusb1.get_backend()
+            fn = backend.lib.libusb_get_version
+            fn.restype = POINTER(_LibusbVersion)
+            ver = fn().contents
+            libusb_version = "%d.%d.%d" % (ver.major, ver.minor, ver.micro)
+        except Exception as exc:
+            libusb_version = "unavailable:" + type(exc).__name__
+    return platform.platform(), libusb_version, pyusb_version
+
+
+def raw_get_configuration(dev):
+    """Return (libusb_rc, configuration_or_None). Does not set a configuration."""
+    dev._ctx.managed_open()
+    handle = dev._ctx.handle.handle
+    cfg = c_int(-1)
+    rc = int(dev._ctx.backend.lib.libusb_get_configuration(handle, byref(cfg)))
+    if rc != 0:
+        return rc, None
+    return 0, int(cfg.value)
+
+
+def raw_claim_interface(dev, interface):
+    """Claim without set_configuration. Records the raw libusb return code."""
+    dev._ctx.managed_open()
+    handle = dev._ctx.handle.handle
+    rc = int(dev._ctx.backend.lib.libusb_claim_interface(handle, int(interface)))
+    if rc == 0:
+        dev._ctx._claimed_intf.add(int(interface))
+        for cfg in dev:
+            if cfg.bConfigurationValue == EXPECTED_CONFIGURATION:
+                dev._ctx._active_cfg_index = cfg.index
+                break
+    return rc
+
+
+def print_not_attempted(reason):
+    print("BULK_OUT=NOT_ATTEMPTED")
+    print("BULK_IN=NOT_ATTEMPTED")
+    print("LOOPBACK=NOT_ATTEMPTED")
+    print("BULK_NOT_ATTEMPTED_REASON=" + reason)
 
 
 def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
     """
-    Wait until the gadget accepts a configuration claim.
+    Darwin claim path for the vendor-specific bulk interface.
 
-    Discovery itself is not a bulk transfer. A not-ready control pipe
-    during enumeration is retried until the timeout. Three-error stop
-    applies only after the interface has been claimed.
+    Never calls is_kernel_driver_active or detach_kernel_driver.
+    Never calls set_configuration when configuration 1 is already active.
+    No bulk transfer is issued unless claim_interface returns 0.
     """
+    if os.environ.get("LIBUSB_DEBUG"):
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+        logging.getLogger("usb").setLevel(logging.DEBUG)
+        logging.getLogger("usb.backend.libusb1").setLevel(logging.DEBUG)
+    host_os, libusb_version, pyusb_version = host_versions()
+    print("HOST_OS=" + host_os)
+    print("LIBUSB_VERSION=" + libusb_version)
+    print("PYUSB_VERSION=" + pyusb_version)
+    print("MACOS_KERNEL_DRIVER_QUERY_REQUIRED=no")
+    print("KERNEL_DRIVER_QUERY_RESULT=not_called")
+    print("KERNEL_DRIVER_QUERY_IGNORED_ON_DARWIN=yes")
+    print("EXPECTED_CONFIGURATION=%d" % EXPECTED_CONFIGURATION)
+    print("EP_OUT=0x01")
+    print("EP_OUT_TYPE=bulk")
+    print("EP_IN=0x81")
+    print("EP_IN_TYPE=bulk")
+
     deadline = time.time() + timeout_sec
+    dev = None
+    last_seen = None
     while time.time() < deadline:
         dev = find_xzs_device(vid, pid)
         if dev is None:
+            if last_seen is not None:
+                print("DEVICE_DISAPPEARED_AT=%.3f" % time.time())
+                print("DEVICE_DISAPPEARED_AFTER_ADDRESS=%s" % last_seen)
+                print_not_attempted("device_disappeared_before_claim")
+                return None
             time.sleep(0.25)
             continue
-        # Let macOS finish its own enumeration before we issue setup.
-        time.sleep(2.0)
+        last_seen = "%s:%s" % (getattr(dev, "bus", "?"), getattr(dev, "address", "?"))
+        # macOS finishes SET_CONFIGURATION on its own. Read it; do not set it.
+        time.sleep(1.0)
         dev = find_xzs_device(vid, pid)
         if dev is None:
+            print("DEVICE_DISAPPEARED_AT=%.3f" % time.time())
+            print("DEVICE_DISAPPEARED_AFTER_ADDRESS=%s" % last_seen)
+            print_not_attempted("device_disappeared_before_claim")
+            return None
+        try:
+            rc, active = raw_get_configuration(dev)
+        except usb.core.USBError as exc:
+            rc = getattr(exc, "backend_error_code", None)
+            active = None
+            print("GET_CONFIGURATION_EXCEPTION=%s" % exc)
+        print("GET_CONFIGURATION_RC=%s" % rc)
+        print("GET_CONFIGURATION_ERROR_NAME=%s" % (libusb_error_name(rc) if rc is not None else "none"))
+        print("ACTIVE_CONFIGURATION=%s" % ("unset" if active is None else active))
+        if rc not in (0, None) or active != EXPECTED_CONFIGURATION:
+            release_device(dev)
+            time.sleep(0.5)
             continue
-        if claim_device(dev):
-            print("USB_DEVICE_FOUND=yes")
-            print("VID_PID=1209:000A")
-            print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
-            print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
-            return dev
-        release_device(dev)
-        print("USB_CLAIM_RETRY=yes")
-        time.sleep(1.0)
-    print("USB_DEVICE_FOUND=no")
-    print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
-    print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
-    print("USB_DATA_PLANE=stopped")
+
+        print("SET_CONFIGURATION_CALLED=no")
+        print("SET_CONFIGURATION_REASON=already_active")
+        print("SET_CONFIGURATION_RESULT=not_called")
+        print("USB_DEVICE_FOUND=yes")
+        print("VID_PID=%04x:%04x" % (dev.idVendor, dev.idProduct))
+        print("BUS=%s" % getattr(dev, "bus", ""))
+        print("ADDRESS=%s" % getattr(dev, "address", ""))
+        print("DEVICE_CLASS=0x%02x" % dev.bDeviceClass)
+        try:
+            intf = dev[0][(0, 0)]
+            print("INTERFACE_NUMBER=%d" % intf.bInterfaceNumber)
+            print("INTERFACE_CLASS=0x%02x" % intf.bInterfaceClass)
+            print("INTERFACE_SUBCLASS=0x%02x" % intf.bInterfaceSubClass)
+            print("INTERFACE_PROTOCOL=0x%02x" % intf.bInterfaceProtocol)
+        except Exception as exc:
+            print("INTERFACE_DESCRIPTOR_READ=%s" % exc)
+
+        print("CLAIM_INTERFACE_ATTEMPTED=yes")
+        claim_rc = raw_claim_interface(dev, EXPECTED_INTERFACE)
+        print("CLAIM_INTERFACE_RC=%d" % claim_rc)
+        print("CLAIM_INTERFACE_ERROR_NAME=%s" % libusb_error_name(claim_rc))
+        print("CLAIM_INTERFACE_ERROR_TEXT=%s" % (
+            "success" if claim_rc == 0 else libusb_error_name(claim_rc)))
+        print("CLAIM_INTERFACE=%s" % ("PASS" if claim_rc == 0 else "FAIL"))
+        if claim_rc != 0:
+            print_not_attempted("claim_interface_failed")
+            release_device(dev)
+            return None
+        print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
+        print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
+        return dev
+
+    print("USB_DEVICE_FOUND=%s" % ("yes" if last_seen else "no"))
+    print("ACTIVE_CONFIGURATION=not_1_before_timeout")
+    print("SET_CONFIGURATION_CALLED=no")
+    print("SET_CONFIGURATION_REASON=refused_until_configuration_1_is_already_active")
+    print("CLAIM_INTERFACE_ATTEMPTED=no")
+    print("CLAIM_INTERFACE=NOT_ATTEMPTED")
+    print_not_attempted("configuration_never_became_1")
     return None
 
 
