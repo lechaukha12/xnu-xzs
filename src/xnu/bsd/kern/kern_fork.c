@@ -680,14 +680,66 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 			proc_list_unlock();
 		}
 
+#if CONFIG_XZS_BRINGUP
+		{
+			extern void xzs_exec_mark(const char *tag);
+			extern void xzs_exec_mark_u64(const char *tag, uint64_t val);
+			extern void xzs_fork_child_prepare(thread_t child, uint64_t *pc,
+			    uint64_t *x0, uint64_t *cpsr, int *cont_repaired);
+			extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
+			    vm_map_address_t, vm_map_size_t);
+			uint64_t child_pc;
+			uint64_t child_x0;
+			uint64_t child_cpsr;
+			int cont_repaired = 0;
+			kern_return_t promote_kr;
+
+			/*
+			 * The child is still on the fork return-wait. Re-assert the
+			 * raw shell ABI (x0 = 0, x1 = 1) and make the one shell
+			 * text page executable in the copied pmap before it can run.
+			 * hello is loaded later by execve; this page is the fork
+			 * return site in /bin/sh.
+			 */
+			xzs_fork_child_prepare(child_thread, &child_pc, &child_x0,
+			    &child_cpsr, &cont_repaired);
+			promote_kr = xzs_promote_launchd_text_exec(
+			    get_task_pmap(child_task), 0x100000000ULL, 0x4000ULL);
+			xzs_exec_mark_u64("E03 pc", child_pc);
+			xzs_exec_mark_u64("E03 x0", child_x0);
+			xzs_exec_mark_u64("E03 cpsr", child_cpsr);
+			xzs_exec_mark(cont_repaired ? "E03 cont repaired" : "E03 cont wait");
+			if (promote_kr == KERN_SUCCESS) {
+				xzs_exec_mark("E03 shell text exec ok");
+			} else if (promote_kr == KERN_PROTECTION_FAILURE) {
+				xzs_exec_mark("E03 shell text prot fail");
+			} else if (promote_kr == KERN_INVALID_ARGUMENT) {
+				xzs_exec_mark("E03 shell text bad arg");
+			} else {
+				xzs_exec_mark("E03 shell text missing");
+			}
+		}
+#endif
 		/* "Return" to the child */
 		task_clear_return_wait(get_threadtask(child_thread), TCRW_CLEAR_ALL_WAIT);
 #if CONFIG_XZS_BRINGUP
 		{
 			extern void xzs_exec_mark(const char *tag);
+			extern int xzs_fork_pull_if_return_waiting(thread_t child, task_t task);
+			int pulled;
+
+			/*
+			 * task_clear_return_wait wakes the initial assert-wait.
+			 * If that wakeup missed, the child is still waiting on the
+			 * same event and the parent blocks in wait4 with no execve.
+			 * Only pull that event, so a child that already reached a
+			 * later fault or syscall wait is left alone.
+			 */
+			pulled = xzs_fork_pull_if_return_waiting(child_thread, child_task);
 			xzs_exec_mark("E02 fork parent");
 			xzs_exec_mark("PARENT_AFTER_FORK");
-			xzs_exec_mark("E03 child resumed");
+			xzs_exec_mark(pulled ?
+			    "E03 child forced run" : "E03 child already queued");
 			xzs_exec_mark("CHILD_AFTER_FORK");
 		}
 #endif

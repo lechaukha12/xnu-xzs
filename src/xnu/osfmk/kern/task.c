@@ -1008,6 +1008,16 @@ task_wait_to_return(void)
 	thread_t thread = current_thread();
 	uint8_t returnwaitflags;
 #if CONFIG_XZS_BRINGUP
+	/*
+	 * USB enqueue only. early_puts here masks IRQs and the comment above
+	 * forbids console logging before the user TTBR0 is known safe.
+	 */
+	{
+		extern void xzs_exec_mark_usb(const char *tag);
+		xzs_exec_mark_usb("E03b child entered");
+	}
+#endif
+#if CONFIG_XZS_BRINGUP
 	extern volatile boolean_t xzs_d6m4_probe_armed;
 	extern thread_t xzs_d6m4_target_thread;
 	boolean_t xzs_d6m4_target = xzs_d6m4_probe_armed &&
@@ -1092,6 +1102,22 @@ task_wait_to_return(void)
 		xzs_d6m4_r650_telemetry.marker = 0x20;
 		xzs_d6m4_r650_telemetry.before_bootstrap_ret = 1;
 		__asm__ volatile("dmb ish" ::: "memory");
+	} else {
+		/*
+		 * fork's thread_hold installs AST_APC and thread_release does
+		 * not clear it. Drop that leftover so the first return to EL0
+		 * is not parked in thread_apc_ast.
+		 */
+		thread_ast_clear(thread, AST_APC);
+	}
+	{
+		extern void xzs_exec_mark_usb(const char *tag);
+		extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
+		extern struct arm_saved_state *get_user_regs(thread_t);
+		struct arm_saved_state *ss = get_user_regs(thread);
+		xzs_exec_mark_usb_u64("E03c pc", get_saved_state_pc(ss));
+		xzs_exec_mark_usb_u64("E03c x0", get_saved_state_reg(ss, 0));
+		xzs_exec_mark_usb("E03c child bootstrap");
 	}
 #endif
 

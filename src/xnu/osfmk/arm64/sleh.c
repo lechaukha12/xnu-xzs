@@ -2220,6 +2220,18 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
 
 	(void)expected_fault_handler;
 
+#if CONFIG_XZS_BRINGUP
+	{
+		static uint32_t xzs_user_abort_marks;
+		if (xzs_user_abort_marks < 2) {
+			extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
+			xzs_user_abort_marks++;
+			xzs_exec_mark_usb_u64("E03d far", fault_addr);
+			xzs_exec_mark_usb_u64("E03d pc", get_saved_state_pc(state));
+		}
+	}
+#endif
+
 	if (__improbable(!SPSR_INTERRUPTS_ENABLED(get_saved_state_cpsr(state)))) {
 		panic_with_thread_kernel_state("User abort from non-interruptible context", state);
 	}

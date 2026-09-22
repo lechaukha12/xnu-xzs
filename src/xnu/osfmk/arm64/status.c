@@ -2552,6 +2552,55 @@ thread_set_child(thread_t child,
 	set_user_saved_state_reg(child_state, 1, 1ULL);
 }
 
+#if CONFIG_XZS_BRINGUP
+/*
+ * Called from fork() while the child is still on its return-wait.
+ * The BSD file only has an opaque thread, so the saved-state and
+ * scheduler fields are updated here.
+ */
+void
+xzs_fork_child_prepare(thread_t child, uint64_t *pc, uint64_t *x0,
+    uint64_t *cpsr, int *cont_repaired)
+{
+	struct arm_saved_state *child_state;
+
+	thread_mtx_lock(child);
+	child_state = get_user_regs(child);
+	set_user_saved_state_reg(child_state, 0, 0);
+	set_user_saved_state_reg(child_state, 1, 1ULL);
+	if (child->continuation != (thread_continue_t)task_wait_to_return) {
+		child->continuation = (thread_continue_t)task_wait_to_return;
+		*cont_repaired = 1;
+	} else {
+		*cont_repaired = 0;
+	}
+	*pc = get_saved_state_pc(child_state);
+	*x0 = get_saved_state_reg(child_state, 0);
+	*cpsr = get_saved_state_cpsr(child_state);
+	thread_mtx_unlock(child);
+}
+
+int
+xzs_fork_pull_if_return_waiting(thread_t child, task_t task)
+{
+	event64_t want;
+	spl_t spl;
+	boolean_t missed;
+
+	want = CAST_EVENT64_T(task_get_return_wait_event(task));
+	spl = splsched();
+	thread_lock(child);
+	missed = ((child->state & TH_WAIT) != 0) &&
+	    (child->wait_event == want);
+	thread_unlock(child);
+	splx(spl);
+	if (!missed) {
+		return 0;
+	}
+	return clear_wait(child, THREAD_AWAKENED) == KERN_SUCCESS;
+}
+#endif
+
 
 struct arm_act_context {
 	struct arm_unified_thread_state ss;

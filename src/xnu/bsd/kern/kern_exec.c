@@ -1342,6 +1342,83 @@ xzs_exec_mark(const char *tag)
 		xzs_usb_console_write((const unsigned char *)line, i);
 	}
 }
+
+static void
+xzs_exec_format(char *line, int *out_len, const char *tag, const uint64_t *val)
+{
+	static const char hexd[] = "0123456789abcdef";
+	int i = 0;
+	const char *p = "[XZS-PROC] ";
+
+	while (*p != 0 && i < 50) {
+		line[i++] = *p++;
+	}
+	p = tag;
+	while (p != NULL && *p != 0 && i < 50) {
+		line[i++] = *p++;
+	}
+	if (val != NULL && i < 60) {
+		int shift;
+		line[i++] = ' ';
+		for (shift = 60; shift >= 0 && i < 78; shift -= 4) {
+			line[i++] = hexd[(*val >> shift) & 0xf];
+		}
+	}
+	line[i++] = '\n';
+	line[i] = 0;
+	*out_len = i;
+}
+
+void
+xzs_exec_mark_u64(const char *tag, uint64_t val)
+{
+	extern void xzs_early_puts(const char *s);
+	extern void xzs_usb_console_write(const unsigned char *buf, int len);
+	extern volatile uint32_t g_xzs_usb_console_ready;
+	char line[80];
+	int i = 0;
+
+	xzs_exec_format(line, &i, tag, &val);
+	xzs_early_puts(line);
+	if (g_xzs_usb_console_ready) {
+		xzs_usb_console_write((const unsigned char *)line, i);
+	}
+}
+
+/*
+ * USB only. task_wait_to_return and the user-abort path must not call
+ * xzs_early_puts: it masks IRQs for the whole string, and the first
+ * return-to-user runs with the user TTBR0 already installed.
+ */
+void
+xzs_exec_mark_usb(const char *tag)
+{
+	extern void xzs_usb_console_write(const unsigned char *buf, int len);
+	extern volatile uint32_t g_xzs_usb_console_ready;
+	char line[80];
+	int i = 0;
+
+	if (!g_xzs_usb_console_ready) {
+		return;
+	}
+	xzs_exec_format(line, &i, tag, NULL);
+	xzs_usb_console_write((const unsigned char *)line, i);
+}
+
+void
+xzs_exec_mark_usb_u64(const char *tag, uint64_t val)
+{
+	extern void xzs_usb_console_write(const unsigned char *buf, int len);
+	extern volatile uint32_t g_xzs_usb_console_ready;
+	char line[80];
+	int i = 0;
+
+	if (!g_xzs_usb_console_ready) {
+		return;
+	}
+	xzs_exec_format(line, &i, tag, &val);
+	xzs_usb_console_write((const unsigned char *)line, i);
+}
 #endif
 
 static int
