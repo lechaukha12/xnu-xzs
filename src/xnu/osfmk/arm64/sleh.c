@@ -2292,8 +2292,20 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
 			    fault_addr < 0x100004000ULL) {
 				extern kern_return_t xzs_promote_launchd_text_exec(
 					pmap_t, vm_map_address_t, vm_map_size_t);
-				(void)xzs_promote_launchd_text_exec(map->pmap,
+				extern void pmap_protect_options(pmap_t, vm_map_offset_t,
+				    vm_map_offset_t, vm_prot_t, unsigned int, void *);
+				extern volatile uint32_t xzs_early_puts_suppress;
+				extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
+				kern_return_t pkr;
+				xzs_early_puts_suppress = 1;
+				pmap_protect_options(map->pmap,
+				    0x100000000ULL, 0x100004000ULL,
+				    VM_PROT_READ | VM_PROT_EXECUTE,
+				    PMAP_OPTIONS_PROTECT_IMMEDIATE, NULL);
+				pkr = xzs_promote_launchd_text_exec(map->pmap,
 				    0x100000000ULL, 0x4000ULL);
+				xzs_early_puts_suppress = 0;
+				xzs_exec_mark_usb_u64("E03d kr", (uint64_t)pkr);
 			}
 #endif
 			return;

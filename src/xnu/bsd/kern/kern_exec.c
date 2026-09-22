@@ -8365,12 +8365,22 @@ exec_prefault_data(
 	if (vm_map_page_shift(current_map()) < (int)PAGE_SHIFT) {
 		DEBUG4K_LOAD("entry_point 0x%llx\n", (uint64_t)load_result->entry_point);
 	}
+#if CONFIG_XZS_BRINGUP
+	/*
+	 * This fault blocks while exec still holds the image vnode.
+	 * The hello page is faulted on the first user instruction abort,
+	 * after exec has dropped that lock.
+	 */
+	kr = KERN_SUCCESS;
+	(void)load_result;
+#else
 	kr = vm_fault(current_map(),
 	    vm_map_trunc_page(load_result->entry_point,
 	    vm_map_page_mask(current_map())),
 	    VM_PROT_READ | VM_PROT_EXECUTE,
 	    FALSE, VM_KERN_MEMORY_NONE,
 	    THREAD_UNINT, NULL, 0);
+#endif
 	if (kr != KERN_SUCCESS) {
 		DEBUG4K_ERROR("map %p va 0x%llx -> 0x%x\n", current_map(), (uint64_t)vm_map_trunc_page(load_result->entry_point, vm_map_page_mask(current_map())), kr);
 	}
