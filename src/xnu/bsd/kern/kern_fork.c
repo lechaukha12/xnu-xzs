@@ -327,9 +327,21 @@ fork1(proc_t parent_proc, thread_t *child_threadp, int kind, coalition_t *coalit
 		/* child_proc = child_thread->task->proc; */
 		child_proc = (proc_t)(get_bsdtask_info(get_threadtask(child_thread)));
 
+#if CONFIG_XZS_BRINGUP
+		if (!spawn) {
+			extern void xzs_exec_mark(const char *tag);
+			xzs_exec_mark("E01a clone");
+		}
+#endif
 		if (!spawn) {
 			/* Copy current thread state into the child thread (only for fork) */
 			thread_dup(child_thread);
+#if CONFIG_XZS_BRINGUP
+			{
+				extern void xzs_exec_mark(const char *tag);
+				xzs_exec_mark("E01b dup");
+			}
+#endif
 		}
 
 // XXX BEGIN: wants to move to be common code (and safe)
@@ -364,6 +376,12 @@ fork1(proc_t parent_proc, thread_t *child_threadp, int kind, coalition_t *coalit
 		 * refactoring code, consider doing this at the same time.
 		 */
 		thread_set_child(child_thread, proc_getpid(child_proc));
+#if CONFIG_XZS_BRINGUP
+		if (!spawn) {
+			extern void xzs_exec_mark(const char *tag);
+			xzs_exec_mark("E01c regs");
+		}
+#endif
 
 		child_proc->p_acflag = AFORK;   /* forked but not exec'ed */
 
@@ -376,6 +394,12 @@ fork1(proc_t parent_proc, thread_t *child_threadp, int kind, coalition_t *coalit
 			 * the protection of the proc_trans lock to prevent a race with exit.
 			 */
 			task_bank_init(get_threadtask(child_thread));
+#if CONFIG_XZS_BRINGUP
+			{
+				extern void xzs_exec_mark(const char *tag);
+				xzs_exec_mark("E01d bank");
+			}
+#endif
 		}
 
 		break;
@@ -641,6 +665,12 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 	if ((err = fork1(parent_proc, &child_thread, PROC_CREATE_FORK, NULL)) == 0) {
 		task_t child_task;
 		proc_t child_proc;
+#if CONFIG_XZS_BRINGUP
+		{
+			extern void xzs_exec_mark(const char *tag);
+			xzs_exec_mark("E01e fork1 done");
+		}
+#endif
 
 		/* Return to the parent */
 		child_proc = (proc_t)get_bsdthreadtask_info(child_thread);
