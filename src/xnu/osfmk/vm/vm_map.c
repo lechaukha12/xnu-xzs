@@ -14115,6 +14115,37 @@ slow_vm_map_fork_copy:
  *	to the type of executable (platform, 64bit, chroot environment).
  *	Map the comm page and shared region, etc...
  */
+#if CONFIG_XZS_BRINGUP
+void
+xzs_exec_map_note(vm_map_t map, int current_map_note)
+{
+	extern void xzs_exec_mark_usb(const char *tag);
+	extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
+	vm_map_entry_t entry = VM_MAP_ENTRY_NULL;
+
+	if (map == VM_MAP_NULL) {
+		xzs_exec_mark_usb(current_map_note ? "E10 cur null" : "E10 task null");
+		return;
+	}
+	vm_map_lock_read(map);
+	xzs_exec_mark_usb_u64(current_map_note ? "E10 cur min" : "E10 task min",
+	    map->min_offset);
+	xzs_exec_mark_usb_u64(current_map_note ? "E10 cur max" : "E10 task max",
+	    map->max_offset);
+	xzs_exec_mark_usb_u64(current_map_note ? "E10 cur nent" : "E10 task nent",
+	    (uint64_t)map->hdr.nentries);
+	if (vm_map_lookup_entry(map, 0x100000000ULL, &entry)) {
+		xzs_exec_mark_usb_u64(current_map_note ? "E10 cur start" : "E10 task start",
+		    entry->vme_start);
+		xzs_exec_mark_usb_u64(current_map_note ? "E10 cur end" : "E10 task end",
+		    entry->vme_end);
+	} else {
+		xzs_exec_mark_usb(current_map_note ? "E10 cur no entry" : "E10 task no entry");
+	}
+	vm_map_unlock_read(map);
+}
+#endif
+
 kern_return_t
 vm_map_exec(
 	vm_map_t        new_map,

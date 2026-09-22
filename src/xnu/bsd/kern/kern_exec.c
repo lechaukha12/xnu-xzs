@@ -2077,6 +2077,11 @@ grade:
 		ap = p->user_stack;
 #if CONFIG_XZS_BRINGUP
 		xzs_exec_mark_usb("E10 strings");
+		{
+			extern void xzs_exec_map_note(vm_map_t map, int current_map_note);
+			xzs_exec_map_note(get_task_map(current_task()), 0);
+			xzs_exec_map_note(current_map(), 1);
+		}
 #endif
 		error = exec_copyout_strings(imgp, &ap);
 #if CONFIG_XZS_BRINGUP
