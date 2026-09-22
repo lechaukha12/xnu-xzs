@@ -325,6 +325,13 @@ def raw_get_configuration(dev):
     return 0, int(cfg.value)
 
 
+def raw_set_configuration(dev, value):
+    """One libusb_set_configuration call. Returns the raw status code."""
+    dev._ctx.managed_open()
+    handle = dev._ctx.handle.handle
+    return int(dev._ctx.backend.lib.libusb_set_configuration(handle, int(value)))
+
+
 def raw_claim_interface(dev, interface):
     """Claim without set_configuration. Records the raw libusb return code."""
     dev._ctx.managed_open()
@@ -374,7 +381,8 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
     deadline = time.time() + timeout_sec
     dev = None
     last_seen = None
-    while time.time() < deadline:
+    hard_streak = 0
+    while time.time() < deadline and hard_streak < MAX_CONSECUTIVE_HARD_USB_ERRORS:
         dev = find_xzs_device(vid, pid)
         if dev is None:
             if last_seen is not None:
@@ -385,7 +393,6 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
             time.sleep(0.25)
             continue
         last_seen = "%s:%s" % (getattr(dev, "bus", "?"), getattr(dev, "address", "?"))
-        # macOS finishes SET_CONFIGURATION on its own. Read it; do not set it.
         time.sleep(1.0)
         dev = find_xzs_device(vid, pid)
         if dev is None:
@@ -402,14 +409,33 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
         print("GET_CONFIGURATION_RC=%s" % rc)
         print("GET_CONFIGURATION_ERROR_NAME=%s" % (libusb_error_name(rc) if rc is not None else "none"))
         print("ACTIVE_CONFIGURATION=%s" % ("unset" if active is None else active))
-        if rc not in (0, None) or active != EXPECTED_CONFIGURATION:
+        if rc != 0:
+            hard_streak += 1
+            print("USB_HARD_STREAK=%d" % hard_streak)
             release_device(dev)
+            if hard_streak >= MAX_CONSECUTIVE_HARD_USB_ERRORS:
+                break
             time.sleep(0.5)
             continue
+        hard_streak = 0
+        if active == EXPECTED_CONFIGURATION:
+            print("SET_CONFIGURATION_CALLED=no")
+            print("SET_CONFIGURATION_RC=not_called")
+            print("SET_CONFIGURATION_REASON=already_active")
+        else:
+            set_rc = raw_set_configuration(dev, EXPECTED_CONFIGURATION)
+            print("SET_CONFIGURATION_CALLED=yes")
+            print("SET_CONFIGURATION_RC=%d" % set_rc)
+            print("SET_CONFIGURATION_ERROR_NAME=%s" % libusb_error_name(set_rc))
+            print("SET_CONFIGURATION_REASON=active_was_%s" % active)
+            if set_rc != 0:
+                hard_streak += 1
+            rc2, active2 = raw_get_configuration(dev)
+            print("ACTIVE_CONFIGURATION_AFTER_SET=%s" % ("unset" if active2 is None else active2))
+            print("GET_CONFIGURATION_AFTER_SET_RC=%s" % rc2)
+            if rc2 == 0:
+                active = active2
 
-        print("SET_CONFIGURATION_CALLED=no")
-        print("SET_CONFIGURATION_REASON=already_active")
-        print("SET_CONFIGURATION_RESULT=not_called")
         print("USB_DEVICE_FOUND=yes")
         print("VID_PID=%04x:%04x" % (dev.idVendor, dev.idProduct))
         print("BUS=%s" % getattr(dev, "bus", ""))
@@ -440,12 +466,10 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
         return dev
 
     print("USB_DEVICE_FOUND=%s" % ("yes" if last_seen else "no"))
-    print("ACTIVE_CONFIGURATION=not_1_before_timeout")
-    print("SET_CONFIGURATION_CALLED=no")
-    print("SET_CONFIGURATION_REASON=refused_until_configuration_1_is_already_active")
     print("CLAIM_INTERFACE_ATTEMPTED=no")
     print("CLAIM_INTERFACE=NOT_ATTEMPTED")
-    print_not_attempted("configuration_never_became_1")
+    print("USB_HARD_STREAK=%d" % hard_streak)
+    print_not_attempted("stopped_before_claim")
     return None
 
 
