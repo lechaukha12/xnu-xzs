@@ -384,11 +384,11 @@ void bootshim_main(uint64_t dtb_phys, uint64_t current_el, uint64_t mpidr) {
     uart_puts("[XZS-SHIM] R2: RAMDisk Payload Copy to Reserved DRAM (0x81700000)...\n");
     uart_puts("  RAMDISK_PHYS_BASE:            0x81700000\n");
     uart_puts("  RAMDISK_IMAGE_SIZE_BYTES:     "); uart_putdec(rootfs_len); uart_puts("\n");
-    uart_puts("  RAMDISK_BACKING_SIZE_BYTES:   36864\n");
+    uart_puts("  RAMDISK_BACKING_SIZE_BYTES:   73728\n");
     uart_puts("  RAMDISK_ZERO_PADDING_BYTES:   1024\n");
 
-    if (rootfs_len != 35840ULL) {
-      uart_puts("[XZS-SHIM] FATAL: Embedded rootfs length != 35840!\n");
+    if (rootfs_len != 70144ULL) {
+      uart_puts("[XZS-SHIM] FATAL: Embedded rootfs length != 70144!\n");
       delay_cycles(19200000);
       psci_system_reset();
     }
@@ -397,13 +397,13 @@ void bootshim_main(uint64_t dtb_phys, uint64_t current_el, uint64_t mpidr) {
     for (uint64_t i = 0; i < rootfs_len; i++) {
       rd_dst[i] = xzs_rootfs_img[i];
     }
-    for (uint64_t i = rootfs_len; i < 36864ULL; i++) {
+    for (uint64_t i = rootfs_len; i < 73728ULL; i++) {
       rd_dst[i] = 0;
     }
     __asm__ volatile("dsb ish; isb" : : : "memory");
 
     int pad_ok = 1;
-    for (uint64_t i = rootfs_len; i < 36864ULL; i++) {
+    for (uint64_t i = rootfs_len; i < 73728ULL; i++) {
       if (rd_dst[i] != 0) {
         pad_ok = 0;
         break;
@@ -413,7 +413,7 @@ void bootshim_main(uint64_t dtb_phys, uint64_t current_el, uint64_t mpidr) {
     uint32_t dram_crc = shim_crc32(rd_dst, rootfs_len);
     uart_puts("  R2_DRAM_COPY_COMPLETE:        yes\n");
     uart_puts("  R2_LOGICAL_IMAGE_CRC:         0x"); uart_puthex64((uint64_t)dram_crc); uart_puts("\n");
-    uart_puts("  R2_LOGICAL_IMAGE_CRC_MATCH:   "); uart_puts(dram_crc == 0x757cbd9d ? "yes\n" : "no\n");
+    uart_puts("  R2_LOGICAL_IMAGE_CRC_MATCH:   "); uart_puts(dram_crc == 0xbbbd5b92 ? "yes\n" : "no\n");
     uart_puts("  R2_PADDING_ZERO:              "); uart_puts(pad_ok ? "yes\n" : "no\n");
 
     /* Checkpoint E: Construct Apple Device Tree (ADT) */
@@ -425,7 +425,7 @@ void bootshim_main(uint64_t dtb_phys, uint64_t current_el, uint64_t mpidr) {
     uart_puts(" bytes\n");
     uart_puts("  R3_RAMDISK_ADT_PRESENT:       yes\n");
     uart_puts("  R3_BASE:                      0x81700000\n");
-    uart_puts("  R3_LENGTH:                    36864\n");
+    uart_puts("  R3_LENGTH:                    73728\n");
 
     /* Checkpoint F: Populate struct boot_args at 0x81800000 */
     g_dlog->last_stage = XZS_STAGE_SHIM_F;

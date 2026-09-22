@@ -69,13 +69,13 @@ int main(int argc, char **argv) {
 
     /* /sbin */
     err = xzsfs_core_lookup(&fs, 1, "sbin", 4, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 6 && node->type == XZSFS_TYPE_DIR);
-    printf("[PASS] Lookup /sbin (id=6, dir)\n");
+    assert(err == XZSFS_ERR_OK && node->object_id == 9 && node->type == XZSFS_TYPE_DIR);
+    printf("[PASS] Lookup /sbin (id=9, dir)\n");
 
     /* /sbin/launchd */
-    err = xzsfs_core_lookup(&fs, 6, "launchd", 7, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 7 && node->type == XZSFS_TYPE_REG);
-    printf("[PASS] Lookup /sbin/launchd (id=7, reg)\n");
+    err = xzsfs_core_lookup(&fs, 9, "launchd", 7, &node);
+    assert(err == XZSFS_ERR_OK && node->object_id == 10 && node->type == XZSFS_TYPE_REG);
+    printf("[PASS] Lookup /sbin/launchd (id=10, reg)\n");
 
     /* /bin */
     err = xzsfs_core_lookup(&fs, 1, "bin", 3, &node);
@@ -84,30 +84,30 @@ int main(int argc, char **argv) {
 
     /* /bin/sh */
     err = xzsfs_core_lookup(&fs, 2, "sh", 2, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 3 && node->type == XZSFS_TYPE_REG);
-    printf("[PASS] Lookup /bin/sh (id=3, reg)\n");
+    assert(err == XZSFS_ERR_OK && node->object_id == 5 && node->type == XZSFS_TYPE_REG);
+    printf("[PASS] Lookup /bin/sh (id=5, reg)\n");
 
     /* /etc */
     err = xzsfs_core_lookup(&fs, 1, "etc", 3, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 5 && node->type == XZSFS_TYPE_DIR);
-    printf("[PASS] Lookup /etc (id=5, dir)\n");
+    assert(err == XZSFS_ERR_OK && node->object_id == 7 && node->type == XZSFS_TYPE_DIR);
+    printf("[PASS] Lookup /etc (id=7, dir)\n");
 
     /* /tmp */
     err = xzsfs_core_lookup(&fs, 1, "tmp", 3, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 8 && node->type == XZSFS_TYPE_DIR);
-    printf("[PASS] Lookup /tmp (id=8, dir)\n");
+    assert(err == XZSFS_ERR_OK && node->object_id == 11 && node->type == XZSFS_TYPE_DIR);
+    printf("[PASS] Lookup /tmp (id=11, dir)\n");
 
     /* /var */
     err = xzsfs_core_lookup(&fs, 1, "var", 3, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 9 && node->type == XZSFS_TYPE_DIR);
-    printf("[PASS] Lookup /var (id=9, dir)\n");
+    assert(err == XZSFS_ERR_OK && node->object_id == 12 && node->type == XZSFS_TYPE_DIR);
+    printf("[PASS] Lookup /var (id=12, dir)\n");
 
     /* Dot and dotdot lookup */
-    err = xzsfs_core_lookup(&fs, 6, ".", 1, &node);
-    assert(err == XZSFS_ERR_OK && node->object_id == 6);
+    err = xzsfs_core_lookup(&fs, 9, ".", 1, &node);
+    assert(err == XZSFS_ERR_OK && node->object_id == 9);
     printf("[PASS] Lookup /sbin/. -> /sbin\n");
 
-    err = xzsfs_core_lookup(&fs, 6, "..", 2, &node);
+    err = xzsfs_core_lookup(&fs, 9, "..", 2, &node);
     assert(err == XZSFS_ERR_OK && node->object_id == 1);
     printf("[PASS] Lookup /sbin/.. -> /\n");
 
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
     printf("[PASS] Lookup nonexistent child -> ENOENT\n");
 
     /* Lookup inside regular file -> ENOTDIR */
-    err = xzsfs_core_lookup(&fs, 7, "child", 5, &node);
+    err = xzsfs_core_lookup(&fs, 10, "child", 5, &node);
     assert(err == XZSFS_ERR_NOTDIR);
     printf("[PASS] Lookup inside regular file -> ENOTDIR\n");
 
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
     uint8_t *launchd_buf = (uint8_t *)malloc(16472);
     size_t bytes_read = 0;
     const struct xzsfs_core_node *launchd_node = NULL;
-    xzsfs_core_lookup(&fs, 6, "launchd", 7, &launchd_node);
+    xzsfs_core_lookup(&fs, 9, "launchd", 7, &launchd_node);
     err = xzsfs_core_read(host_block_read, &bctx, launchd_node, 0, launchd_node->data_length, launchd_buf, &bytes_read);
     assert(err == XZSFS_ERR_OK && bytes_read == 16472);
     uint32_t launchd_crc = xzsfs_crc32(0, launchd_buf, bytes_read);
@@ -133,14 +133,14 @@ int main(int argc, char **argv) {
     assert(launchd_crc == 0xe212a8a2);
 
     /* Payload Verification: /bin/sh */
-    uint8_t *sh_buf = (uint8_t *)malloc(16608);
+    uint8_t *sh_buf = (uint8_t *)malloc(16736);
     const struct xzsfs_core_node *sh_node = NULL;
     xzsfs_core_lookup(&fs, 2, "sh", 2, &sh_node);
     err = xzsfs_core_read(host_block_read, &bctx, sh_node, 0, sh_node->data_length, sh_buf, &bytes_read);
-    assert(err == XZSFS_ERR_OK && bytes_read == 16608);
+    assert(err == XZSFS_ERR_OK && bytes_read == 16736);
     uint32_t sh_crc = xzsfs_crc32(0, sh_buf, bytes_read);
     printf("[PASS] /bin/sh: size=%zu, CRC32=0x%08x\n", bytes_read, sh_crc);
-    assert(sh_crc == 0x7e255109);
+    assert(sh_crc == 0x060a7a33);
 
     /* Partial & Unaligned Read Tests */
     /* 1. First byte */

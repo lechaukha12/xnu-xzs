@@ -414,7 +414,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
         sh_crc = xzsfs_crc32(sh_crc, s_chunk_buf, n);
         bytes_read += n;
     }
-    if (bytes_read != 16608 || sh_crc != 0x7e255109) {
+    if (bytes_read != 16736 || sh_crc != 0x060a7a33) {
         xzs_early_puts("D5-M3 FATAL: /bin/sh payload mismatch!\n");
         xzs_breadcrumb(CP_D5M3, 0xFB);
         vnode_put(devvp);
@@ -424,7 +424,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
     }
     /* 0x71: sh read pass */
     xzs_breadcrumb(CP_D5M3, 0x71);
-    xzs_early_puts("D5-M3: /bin/sh payload verified (size=16608, CRC32=0x7e255109)\n");
+    xzs_early_puts("D5-M3: /bin/sh payload verified (size=16736, CRC32=0x060a7a33)\n");
 
     /* 11. Partial, Unaligned, Cross-Sector, and EOF Reads */
     /* First byte (off=0, len=1) */
@@ -510,8 +510,8 @@ xzsfs_d5m3_probe(dev_t root_dev)
     xzs_early_puts("D5-M3: Partial, unaligned, cross-sector, and EOF reads verified\n");
 
     /* 12. PRE-Mutation Whole-md0 CRC32 Verification */
-    uint32_t pre_crc = xzsfs_compute_ramdisk_crc32(devvp, 70);
-    if (pre_crc != 0x757cbd9d) {
+    uint32_t pre_crc = xzsfs_compute_ramdisk_crc32(devvp, 137);
+    if (pre_crc != 0xbbbd5b92) {
         xzs_early_puts("D5-M3 FATAL: Pre-mutation CRC mismatch!\n");
         xzs_breadcrumb(CP_D5M3, 0xFE);
         vnode_put(devvp);
@@ -521,7 +521,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
     }
     /* 0x73: PRE mutation whole-md0 CRC32 pass */
     xzs_breadcrumb(CP_D5M3, 0x73);
-    xzs_early_puts("D5-M3: PRE-mutation md0 CRC32 verified (0x757cbd9d)\n");
+    xzs_early_puts("D5-M3: PRE-mutation md0 CRC32 verified (0xbbbd5b92)\n");
 
     /* 13. Read-Only Rejection Test */
     int rofs_res = xzsfs_rofs_err(NULL);
@@ -538,8 +538,8 @@ xzsfs_d5m3_probe(dev_t root_dev)
     xzs_early_puts("D5-M3: Read-only rejection verified (EROFS returned)\n");
 
     /* 14. POST-Mutation Whole-md0 CRC32 Verification */
-    uint32_t post_crc = xzsfs_compute_ramdisk_crc32(devvp, 70);
-    if (post_crc != 0x757cbd9d) {
+    uint32_t post_crc = xzsfs_compute_ramdisk_crc32(devvp, 137);
+    if (post_crc != 0xbbbd5b92) {
         xzs_early_puts("D5-M3 FATAL: Post-mutation CRC mismatch!\n");
         xzs_breadcrumb(CP_D5M3, 0xFE);
         vnode_put(devvp);
@@ -559,7 +559,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
     }
     /* 0x81: POST mutation whole-md0 CRC32 pass */
     xzs_breadcrumb(CP_D5M3, 0x81);
-    xzs_early_puts("D5-M3: POST-mutation md0 CRC32 verified (0x757cbd9d)\n");
+    xzs_early_puts("D5-M3: POST-mutation md0 CRC32 verified (0xbbbd5b92)\n");
 
     /* 15. D5-M3 Complete Telemetry Banner */
     /* 0x90: D5-M3 complete */
@@ -587,8 +587,8 @@ xzsfs_d5m3_probe(dev_t root_dev)
     xzs_early_puts("XZSFS_UNALIGNED_READ_MATCH=yes\n");
     xzs_early_puts("XZSFS_CROSS_SECTOR_READ_MATCH=yes\n");
     xzs_early_puts("XZSFS_EOF_SEMANTICS_PASS=yes\n");
-    xzs_early_puts("PRE_MUTATION_MD0_CRC32=0x757cbd9d\n");
-    xzs_early_puts("POST_MUTATION_MD0_CRC32=0x757cbd9d\n");
+    xzs_early_puts("PRE_MUTATION_MD0_CRC32=0xbbbd5b92\n");
+    xzs_early_puts("POST_MUTATION_MD0_CRC32=0xbbbd5b92\n");
     xzs_early_puts("RAMDISK_CONTENT_UNCHANGED=yes\n");
     xzs_early_puts("XZSFS_REAL_VNODE_CREATED=no\n");
     xzs_early_puts("XZSFS_VNOP_DISPATCH_VERIFIED=no\n");
@@ -1108,7 +1108,7 @@ xzsfs_d5m6_probe(void)
     xzs_breadcrumb(CP_D5M6, 0x50);
     xzs_early_puts("[XZSFS] namei('/bin/sh') resolved VREG (PASS)\n");
 
-    /* D550/51: /bin/sh getattr identity PASS (fileid 3, size 16608, mode 0755) */
+    /* D550/51: /bin/sh getattr identity PASS (fileid 3, size 16736, mode 0755) */
     VATTR_INIT(&va);
     VATTR_WANTED(&va, va_type);
     VATTR_WANTED(&va, va_mode);
@@ -1116,7 +1116,7 @@ xzsfs_d5m6_probe(void)
     VATTR_WANTED(&va, va_data_size);
     error = VNOP_GETATTR(shvp, &va, vfs_context_kernel());
     if (error != 0 || va.va_type != VREG || va.va_mode != 0755 ||
-        va.va_fileid != 3 || va.va_data_size != 16608) {
+        va.va_fileid != 5 || va.va_data_size != 16736) {
         vnode_put(shvp);
         return xzsfs_d5m6_fatal(0xE5, "/bin/sh vnode identity/getattr mismatch", error);
     }
@@ -1160,9 +1160,9 @@ xzsfs_d5m6_probe(void)
     xzs_early_puts("NAMEI_SBIN_LAUNCHD_PASS=yes\n");
     xzs_early_puts("NAMEI_BIN_SH_PASS=yes\n");
     xzs_early_puts("BIN_SH_VNODE_TYPE=VREG\n");
-    xzs_early_puts("BIN_SH_OBJECT_ID=3\n");
+    xzs_early_puts("BIN_SH_OBJECT_ID=5\n");
     xzs_early_puts("BIN_SH_MODE=0755\n");
-    xzs_early_puts("BIN_SH_SIZE=16608\n");
+    xzs_early_puts("BIN_SH_SIZE=16736\n");
     xzs_early_puts("DEVFS_MOUNTED=yes\n");
     xzs_early_puts("NAMEI_DEV_PASS=yes\n");
     xzs_early_puts("NAMEI_DEV_CONSOLE_PASS=yes\n");

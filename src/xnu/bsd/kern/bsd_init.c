@@ -2175,14 +2175,14 @@ xzs_d5m2_r5_verify(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x61673b42)\n");
 	xzs_early_puts("  SECTOR0_RAW_CRC32:                       0x");
 	xzs_early_puthex64((uint64_t)sec0_crc);
-	xzs_early_puts(" (expected: 0x8457e01f)\n\n");
+	xzs_early_puts(" (expected: 0x8c09cf6b)\n\n");
 
 	buf_brelse(bp0);
 	bp0 = NULL;
 
 	boolean_t s0_valid = (magic0 == 0x5346535A && ver0 == 1 && hdr_sz0 == 512 &&
 	                      sec_sz0 == 512 && img_sz0 == 35840 && obj_cnt0 == 9 &&
-	                      root_id0 == 1 && meta_crc0 == 0x61673b42 && sec0_crc == 0x8457e01f);
+	                      root_id0 == 1 && meta_crc0 == 0x61673b42 && sec0_crc == 0x8c09cf6b);
 
 	if (!s0_valid) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 0 validation failed!\n");
@@ -2285,12 +2285,12 @@ xzs_d5m2_r6_verify(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x5346535A 'XZSF')\n");
 	xzs_early_puts("  SECTOR0_RAW_CRC32:                       0x");
 	xzs_early_puthex64((uint64_t)sec0_crc);
-	xzs_early_puts(" (expected: 0x8457e01f)\n");
+	xzs_early_puts(" (expected: 0x8c09cf6b)\n");
 
 	buf_brelse(bp0);
 	bp0 = NULL;
 
-	if (magic0 != 0x5346535A || ver0 != 1 || sec0_crc != 0x8457e01f) {
+	if (magic0 != 0x5346535A || ver0 != 1 || sec0_crc != 0x8c09cf6b) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 0 validation failed!\n");
 		xzs_breadcrumb(0xD510, 0xED);
 		xzs_spin_halt();
@@ -2333,12 +2333,12 @@ xzs_d5m2_r6_verify(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x1ed / 0755)\n");
 	xzs_early_puts("  SECTOR1_CRC32:                           0x");
 	xzs_early_puthex64((uint64_t)sec1_crc);
-	xzs_early_puts(" (expected: 0x811ff249)\n");
+	xzs_early_puts(" (expected: 0x795ea47a)\n");
 
 	buf_brelse(bp1);
 	bp1 = NULL;
 
-	if (root_obj_id != 1 || root_parent_id != 1 || root_type != 1 || sec1_crc != 0x811ff249) {
+	if (root_obj_id != 1 || root_parent_id != 1 || root_type != 1 || sec1_crc != 0x795ea47a) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 1 root object invariant mismatch!\n");
 		xzs_breadcrumb(0xD510, 0xEF);
 		xzs_spin_halt();
@@ -2352,7 +2352,7 @@ xzs_d5m2_r6_verify(dev_t root_dev, const char *root_name)
 	 */
 	xzs_early_puts("  4. READ SECTOR 69 (LAST LOGICAL SECTOR):\n");
 	buf_t bp69 = NULL;
-	errno_t err69 = buf_bread(vp, 69, 512, NOCRED, &bp69);
+	errno_t err69 = buf_bread(vp, 136, 512, NOCRED, &bp69);
 	if (err69 != 0 || bp69 == NULL || buf_error(bp69) != 0 || buf_resid(bp69) != 0) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: buf_bread sector 69 failed!\n");
 		xzs_breadcrumb(0xD510, 0xF1);
@@ -2471,12 +2471,12 @@ xzs_d5m2_r7_verify(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x5346535A 'XZSF')\n");
 	xzs_early_puts("  SECTOR0_RAW_CRC32:                       0x");
 	xzs_early_puthex64((uint64_t)sec0_crc);
-	xzs_early_puts(" (expected: 0x8457e01f)\n");
+	xzs_early_puts(" (expected: 0x8c09cf6b)\n");
 
 	buf_brelse(bp0);
 	bp0 = NULL;
 
-	if (magic0 != 0x5346535A || ver0 != 1 || sec0_crc != 0x8457e01f) {
+	if (magic0 != 0x5346535A || ver0 != 1 || sec0_crc != 0x8c09cf6b) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 0 validation failed!\n");
 		xzs_breadcrumb(0xD510, 0xED);
 		xzs_spin_halt();
@@ -2519,12 +2519,12 @@ xzs_d5m2_r7_verify(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x1ed / 0755)\n");
 	xzs_early_puts("  SECTOR1_CRC32:                           0x");
 	xzs_early_puthex64((uint64_t)sec1_crc);
-	xzs_early_puts(" (expected: 0x811ff249)\n");
+	xzs_early_puts(" (expected: 0x795ea47a)\n");
 
 	buf_brelse(bp1);
 	bp1 = NULL;
 
-	if (root_obj_id != 1 || root_parent_id != 1 || root_type != 1 || sec1_crc != 0x811ff249) {
+	if (root_obj_id != 1 || root_parent_id != 1 || root_type != 1 || sec1_crc != 0x795ea47a) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 1 root object invariant mismatch!\n");
 		xzs_breadcrumb(0xD510, 0xEF);
 		xzs_spin_halt();
@@ -2538,7 +2538,7 @@ xzs_d5m2_r7_verify(dev_t root_dev, const char *root_name)
 	 */
 	xzs_early_puts("  4. READ SECTOR 69 (LAST LOGICAL SECTOR):\n");
 	buf_t bp69 = NULL;
-	errno_t err69 = buf_bread(vp, 69, 512, NOCRED, &bp69);
+	errno_t err69 = buf_bread(vp, 136, 512, NOCRED, &bp69);
 	if (err69 != 0 || bp69 == NULL || buf_error(bp69) != 0 || buf_resid(bp69) != 0) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: buf_bread sector 69 failed!\n");
 		xzs_breadcrumb(0xD510, 0xF1);
@@ -2572,7 +2572,7 @@ xzs_d5m2_r7_verify(dev_t root_dev, const char *root_name)
 	xzs_breadcrumb(0xD510, 0x53);
 
 	uint32_t full_img_crc = 0;
-	for (int s = 0; s < 70; s++) {
+	for (int s = 0; s < 137; s++) {
 		buf_t bp_s = NULL;
 		errno_t err_s = buf_bread(vp, (daddr64_t)s, 512, NOCRED, &bp_s);
 		if (err_s != 0 || bp_s == NULL || buf_error(bp_s) != 0 || buf_resid(bp_s) != 0) {
@@ -2590,11 +2590,11 @@ xzs_d5m2_r7_verify(dev_t root_dev, const char *root_name)
 	xzs_early_puts("  70_SECTORS_READ_COMPLETE:                yes\n");
 	xzs_early_puts("  COMPUTED_LOGICAL_IMAGE_CRC32:            0x");
 	xzs_early_puthex64((uint64_t)full_img_crc);
-	xzs_early_puts(" (expected: 0x757cbd9d)\n");
+	xzs_early_puts(" (expected: 0xbbbd5b92)\n");
 
 	xzs_breadcrumb(0xD510, 0x55);
 
-	if (full_img_crc != 0x757cbd9d) {
+	if (full_img_crc != 0xbbbd5b92) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Logical image CRC32 mismatch!\n");
 		xzs_breadcrumb(0xD510, 0xF4);
 		xzs_spin_halt();
@@ -2611,7 +2611,7 @@ xzs_d5m2_r7_verify(dev_t root_dev, const char *root_name)
 	xzs_breadcrumb(0xD510, 0x57);
 
 	boolean_t padding_zero = TRUE;
-	for (int s = 70; s < 72; s++) {
+	for (int s = 137; s < 139; s++) {
 		buf_t bp_pad = NULL;
 		errno_t err_pad = buf_bread(vp, (daddr64_t)s, 512, NOCRED, &bp_pad);
 		if (err_pad != 0 || bp_pad == NULL || buf_error(bp_pad) != 0 || buf_resid(bp_pad) != 0) {
@@ -2738,12 +2738,12 @@ xzs_d5m2_r8_seal(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x5346535A 'XZSF')\n");
 	xzs_early_puts("  SECTOR0_RAW_CRC32:                       0x");
 	xzs_early_puthex64((uint64_t)sec0_crc);
-	xzs_early_puts(" (expected: 0x8457e01f)\n");
+	xzs_early_puts(" (expected: 0x8c09cf6b)\n");
 
 	buf_brelse(bp0);
 	bp0 = NULL;
 
-	if (magic0 != 0x5346535A || ver0 != 1 || sec0_crc != 0x8457e01f) {
+	if (magic0 != 0x5346535A || ver0 != 1 || sec0_crc != 0x8c09cf6b) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 0 validation failed!\n");
 		xzs_breadcrumb(0xD510, 0xED);
 		xzs_spin_halt();
@@ -2786,12 +2786,12 @@ xzs_d5m2_r8_seal(dev_t root_dev, const char *root_name)
 	xzs_early_puts(" (expected: 0x1ed / 0755)\n");
 	xzs_early_puts("  SECTOR1_CRC32:                           0x");
 	xzs_early_puthex64((uint64_t)sec1_crc);
-	xzs_early_puts(" (expected: 0x811ff249)\n");
+	xzs_early_puts(" (expected: 0x795ea47a)\n");
 
 	buf_brelse(bp1);
 	bp1 = NULL;
 
-	if (root_obj_id != 1 || root_parent_id != 1 || root_type != 1 || sec1_crc != 0x811ff249) {
+	if (root_obj_id != 1 || root_parent_id != 1 || root_type != 1 || sec1_crc != 0x795ea47a) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Sector 1 root object invariant mismatch!\n");
 		xzs_breadcrumb(0xD510, 0xEF);
 		xzs_spin_halt();
@@ -2805,7 +2805,7 @@ xzs_d5m2_r8_seal(dev_t root_dev, const char *root_name)
 	 */
 	xzs_early_puts("  4. READ SECTOR 69 (LAST LOGICAL SECTOR):\n");
 	buf_t bp69 = NULL;
-	errno_t err69 = buf_bread(vp, 69, 512, NOCRED, &bp69);
+	errno_t err69 = buf_bread(vp, 136, 512, NOCRED, &bp69);
 	if (err69 != 0 || bp69 == NULL || buf_error(bp69) != 0 || buf_resid(bp69) != 0) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: buf_bread sector 69 failed!\n");
 		xzs_breadcrumb(0xD510, 0xF1);
@@ -2839,7 +2839,7 @@ xzs_d5m2_r8_seal(dev_t root_dev, const char *root_name)
 	xzs_breadcrumb(0xD510, 0x53);
 
 	uint32_t full_img_crc = 0;
-	for (int s = 0; s < 70; s++) {
+	for (int s = 0; s < 137; s++) {
 		buf_t bp_s = NULL;
 		errno_t err_s = buf_bread(vp, (daddr64_t)s, 512, NOCRED, &bp_s);
 		if (err_s != 0 || bp_s == NULL || buf_error(bp_s) != 0 || buf_resid(bp_s) != 0) {
@@ -2857,11 +2857,11 @@ xzs_d5m2_r8_seal(dev_t root_dev, const char *root_name)
 	xzs_early_puts("  70_SECTORS_READ_COMPLETE:                yes\n");
 	xzs_early_puts("  COMPUTED_LOGICAL_IMAGE_CRC32:            0x");
 	xzs_early_puthex64((uint64_t)full_img_crc);
-	xzs_early_puts(" (expected: 0x757cbd9d)\n");
+	xzs_early_puts(" (expected: 0xbbbd5b92)\n");
 
 	xzs_breadcrumb(0xD510, 0x55);
 
-	if (full_img_crc != 0x757cbd9d) {
+	if (full_img_crc != 0xbbbd5b92) {
 		xzs_early_puts("[XZS-RAMDISK] FATAL: Logical image CRC32 mismatch!\n");
 		xzs_breadcrumb(0xD510, 0xF4);
 		xzs_spin_halt();
@@ -2878,7 +2878,7 @@ xzs_d5m2_r8_seal(dev_t root_dev, const char *root_name)
 	xzs_breadcrumb(0xD510, 0x57);
 
 	boolean_t padding_zero = TRUE;
-	for (int s = 70; s < 72; s++) {
+	for (int s = 137; s < 139; s++) {
 		buf_t bp_pad = NULL;
 		errno_t err_pad = buf_bread(vp, (daddr64_t)s, 512, NOCRED, &bp_pad);
 		if (err_pad != 0 || bp_pad == NULL || buf_error(bp_pad) != 0 || buf_resid(bp_pad) != 0) {

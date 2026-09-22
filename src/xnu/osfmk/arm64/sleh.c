@@ -886,10 +886,17 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 				__asm__ volatile("dmb ish" ::: "memory");
 			}
 			goto xzs_d6m5_dispatch_first_svc;
+		} else if (is_user && class == ESR_EC_SVC_64 && xzs_d7m4_post_read_el0 &&
+		    ESR_ISS(esr) == 0x80 &&
+		    (ss64->x[16] == 1 || ss64->x[16] == 2 || ss64->x[16] == 5 ||
+		    ss64->x[16] == 6 || ss64->x[16] == 7 || ss64->x[16] == 12 ||
+		    ss64->x[16] == 59 || ss64->x[16] == 196)) {
+			/* Interactive shell syscalls after the sealed M4 read. */
+			goto xzs_d6m5_dispatch_first_svc;
 		} else if (is_user && class == ESR_EC_SVC_64 && xzs_d7m4_armed) {
 			if (!xzs_d7m4_read_entered &&
 			    ESR_ISS(esr) == 0x80 &&
-			    elr == 0x0000000100000888ULL &&
+			    elr == 0x0000000100000928ULL &&
 			    ss64->x[0] == 0 &&
 			    ss64->x[1] == sp_el0 &&
 			    ss64->x[2] == 16 &&
@@ -899,7 +906,7 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 				goto xzs_d6m5_dispatch_first_svc;
 			} else if (xzs_d7m4_read_returned &&
 			    ESR_ISS(esr) == 0x80 &&
-			    elr == 0x00000001000008acULL &&
+			    elr == 0x000000010000094cULL &&
 			    ss64->x[16] == 20) {
 				/* Reaching this callsite proves the EL0 byte comparisons passed. */
 				xzs_d7m4_input_match = 1;
@@ -907,7 +914,7 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 				goto xzs_d6m5_dispatch_first_svc;
 			} else if (xzs_d7m4_read_returned &&
 			    ESR_ISS(esr) == 0x80 &&
-			    elr == 0x00000001000008b8ULL &&
+			    elr == 0x0000000100000958ULL &&
 			    ss64->x[16] == 20) {
 				/* Deterministic failure-side liveness marker; never acceptance. */
 				goto xzs_d6m5_dispatch_first_svc;
@@ -918,9 +925,9 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 		} else if (is_user && class == ESR_EC_SVC_64 && xzs_d7m3_armed) {
 			if (!xzs_d7m3_banner_trapped &&
 			    ESR_ISS(esr) == 0x80 &&
-			    elr == 0x0000000100000308ULL &&
+			    elr == 0x00000001000003a8ULL &&
 			    ss64->x[0] == 1 &&
-			    ss64->x[1] == 0x0000000100000338ULL &&
+			    ss64->x[1] == 0x00000001000003d8ULL &&
 			    ss64->x[2] == 1332 &&
 			    ss64->x[16] == 4) {
 				/* D720/20: banner SVC observed from shell EL0 */
@@ -928,15 +935,15 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 				xzs_early_puts("[XZS-D7M3] D720/20 banner SVC observed from shell EL0\n");
 				/* D720/21: banner source/callsite/arguments validated */
 				xzs_breadcrumb(0xD720, 0x21);
-				xzs_early_puts("[XZS-D7M3] D720/21 banner source/callsite/arguments validated (fd=1, va=0x100000338, len=1332)\n");
+				xzs_early_puts("[XZS-D7M3] D720/21 banner source/callsite/arguments validated (fd=1, va=0x1000003d8, len=1332)\n");
 				xzs_d7m3_banner_trapped = 1;
 				__asm__ volatile("dmb ish" ::: "memory");
 				goto xzs_d6m5_dispatch_first_svc;
 			} else if (xzs_d7m3_banner_completed && !xzs_d7m3_prompt_trapped &&
 			    ESR_ISS(esr) == 0x80 &&
-			    elr == 0x0000000100000320ULL &&
+			    elr == 0x00000001000003c0ULL &&
 			    ss64->x[0] == 1 &&
-			    ss64->x[1] == 0x0000000100000330ULL &&
+			    ss64->x[1] == 0x00000001000003d0ULL &&
 			    ss64->x[2] == 5 &&
 			    ss64->x[16] == 4) {
 				/* D720/30: prompt SVC observed from shell EL0 */
@@ -944,13 +951,13 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 				xzs_early_puts("[XZS-D7M3] D720/30 prompt SVC observed from shell EL0\n");
 				/* D720/31: prompt source/callsite/arguments validated */
 				xzs_breadcrumb(0xD720, 0x31);
-				xzs_early_puts("[XZS-D7M3] D720/31 prompt source/callsite/arguments validated (fd=1, va=0x100000330, len=5)\n");
+				xzs_early_puts("[XZS-D7M3] D720/31 prompt source/callsite/arguments validated (fd=1, va=0x1000003d0, len=5)\n");
 				xzs_d7m3_prompt_trapped = 1;
 				__asm__ volatile("dmb ish" ::: "memory");
 				goto xzs_d6m5_dispatch_first_svc;
 			} else if (xzs_d7m3_prompt_completed &&
 			    ESR_ISS(esr) == 0x80 &&
-			    elr == 0x0000000100000328ULL &&
+			    elr == 0x00000001000003c8ULL &&
 			    ss64->x[16] == 20) {
 				if (!xzs_d7m3_post_prompt_proved) {
 					/* D720/40: first post-prompt getpid entered */
@@ -1184,7 +1191,7 @@ xzs_d6m5_dispatch_first_svc:
 						xzs_d7m3_report_completion();
 						/* D7-M4 begins only after the sealed D720 contract is complete. */
 						xzs_d7m4_armed = 1;
-						set_saved_state_pc(state, 0x0000000100000870ULL);
+						set_saved_state_pc(state, 0x0000000100000910ULL);
 						__asm__ volatile("dmb ish" ::: "memory");
 					}
 				}

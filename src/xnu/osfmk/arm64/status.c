@@ -3589,7 +3589,7 @@ xzs_d6m4_monitor_and_report_r650(task_t t, thread_t th)
 		xzs_early_puts("=== D7-M4 INTERNAL ACCEPTANCE TELEMETRY BEGIN ===\n");
 		xzs_early_puts("D7M4_INPUT_SOURCE=INTERNAL_LOOPBACK\n");
 		xzs_early_puts("D7M4_SHELL_IMAGE_SHA256=fd9e0db28b88834c70c9e413a7c3ecf1e1f07e5aac167de4a05373e18ce92988\n");
-		xzs_early_puts("D7M4_SHELL_READ_ENTRY=0x0000000100000870\n");
+		xzs_early_puts("D7M4_SHELL_READ_ENTRY=0x0000000100000910\n");
 		xzs_early_puts("UARTDM_INTERNAL_LOOPBACK_VERIFIED=yes\n");
 		xzs_early_puts("UARTDM_RX_IRQ=146\n");
 		xzs_early_puts("GIC_INTERRUPT_TYPE=SPI_114\n");

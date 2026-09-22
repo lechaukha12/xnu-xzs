@@ -116,7 +116,7 @@ uint32_t adt_build_tree_at(uint64_t base_addr) {
         uint64_t length;
     } ramdisk_range = {
         .paddr = 0x81700000ULL,
-        .length = 0x9000ULL,     /* 36864 bytes (9 pages of 4KB) backing */
+        .length = 0x12000ULL,    /* 73728 bytes, image plus zero padding */
     };
     adt_put_prop("RAMDisk", &ramdisk_range, sizeof(ramdisk_range));
 

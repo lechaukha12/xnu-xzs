@@ -5691,9 +5691,9 @@ xzs_d7m2_handoff_to_shell(proc_t p, task_t t, thread_t th, void *saved_state)
 	VATTR_WANTED(&va, va_data_size);
 	VATTR_WANTED(&va, va_mode);
 	if (vnode_getattr(vp, &va, ctx) != 0 || !VATTR_IS_SUPPORTED(&va, va_data_size) ||
-	    va.va_data_size != 16608) {
+	    va.va_data_size != 16736) {
 		vnode_put(vp);
-		xzs_d7m2_fatal(0x30, "/bin/sh vnode size mismatch (expected 16608)");
+		xzs_d7m2_fatal(0x30, "/bin/sh vnode size mismatch (expected 16736)");
 		return -1;
 	}
 
@@ -5769,7 +5769,7 @@ xzs_d7m2_handoff_to_shell(proc_t p, task_t t, thread_t th, void *saved_state)
 	cmds_buf = NULL;
 
 	if (!text_found || text_vmaddr != 0x100000000ULL || text_vmsize != 0x4000ULL ||
-	    initial_pc != 0x1000002f0ULL || dylinker_found || dylib_count != 0) {
+	    initial_pc != 0x100000390ULL || dylinker_found || dylib_count != 0) {
 		vnode_put(vp);
 		xzs_d7m2_fatal(0x32, "/bin/sh static/no-dyld contract validation failed");
 		return -1;
@@ -6021,10 +6021,10 @@ xzs_d7m3_report_completion(void)
 	xzs_d7m2_puts("D7_M3_ENTERED=yes\n");
 	xzs_d7m2_puts("SHELL_RUNNING_IN_EL0=yes\n");
 	xzs_d7m2_puts("SHELL_IMAGE_SHA256=848a10da132fb4482c3cae01a35a73fb6fe4a79bf9e170800489d12f3fbb7bd3\n");
-	xzs_d7m2_puts("SHELL_ENTRY=0x00000001000002f0\n");
-	xzs_d7m2_puts("SHELL_BANNER_USER_VA=0x0000000100000338\n");
+	xzs_d7m2_puts("SHELL_ENTRY=0x0000000100000390\n");
+	xzs_d7m2_puts("SHELL_BANNER_USER_VA=0x00000001000003d8\n");
 	xzs_d7m2_puts("SHELL_BANNER_LENGTH=1332\n");
-	xzs_d7m2_puts("SHELL_PROMPT_USER_VA=0x0000000100000330\n");
+	xzs_d7m2_puts("SHELL_PROMPT_USER_VA=0x00000001000003d0\n");
 	xzs_d7m2_puts("SHELL_PROMPT_LENGTH=5\n");
 	xzs_d7m2_puts("SHELL_BANNER_FROM_EL0=yes\n");
 	xzs_d7m2_puts("SHELL_BANNER_WRITE_NATIVE=yes\n");
@@ -6110,7 +6110,7 @@ xzs_d7m2_report_completion(void)
 	xzs_d7m2_puts("SHELL_ARGV0=/bin/sh\n");
 	xzs_d7m2_puts("SHELL_INITIAL_SP=0x000000016fdfffb0\n");
 	xzs_d7m2_puts("SHELL_INITIAL_SP_ALIGNED=yes\n");
-	xzs_d7m2_puts("SHELL_INITIAL_PC=0x00000001000002f0\n");
+	xzs_d7m2_puts("SHELL_INITIAL_PC=0x0000000100000390\n");
 	xzs_d7m2_puts("SHELL_INITIAL_PC_VALID=yes\n");
 	xzs_d7m2_puts("SHELL_INITIAL_SP_VALID=yes\n");
 	xzs_d7m2_puts("SHELL_REGISTER_STATE_READY=yes\n");
