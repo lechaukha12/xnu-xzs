@@ -1975,11 +1975,20 @@ grade:
 		extern volatile uint32_t xzs_early_puts_suppress;
 		pmap_t hello_pmap = get_task_pmap(task);
 		kern_return_t pkr;
+		kern_return_t fault_kr;
 		/*
-		 * load_machfile leaves the text PTE without the AF bit the
-		 * promote helper requires. The same immediate protect used
-		 * for the shell page sets AF before UXN is cleared.
+		 * The loaded text page has no leaf PTE until it is faulted
+		 * in. Promote returns KERN_FAILURE (5) on a missing L3.
+		 * Fault it, then set AF with the immediate protect used for
+		 * the shell page, then clear UXN.
 		 */
+		xzs_exec_mark_usb("E09 fault enter");
+		fault_kr = vm_fault(get_task_map(task),
+		    0x100000000ULL,
+		    VM_PROT_READ | VM_PROT_EXECUTE,
+		    FALSE, VM_KERN_MEMORY_NONE,
+		    THREAD_UNINT, NULL, 0);
+		xzs_exec_mark_usb_u64("E09 fault", (uint64_t)fault_kr);
 		xzs_exec_mark_usb("E09 protect");
 		pmap_protect_options(hello_pmap,
 		    0x100000000ULL, 0x100004000ULL,
@@ -2288,7 +2297,13 @@ cleanup_rosetta_fp:
 #endif
 
 	/* Avoid immediate VM faults back into kernel */
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb("E11 prefault");
+#endif
 	exec_prefault_data(p, imgp, &load_result);
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb("E11 prefault done");
+#endif
 
 	vm_map_switch_back(switch_ctx);
 
