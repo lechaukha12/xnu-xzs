@@ -1115,7 +1115,17 @@ task_wait_to_return(void)
 		extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
 		extern struct arm_saved_state *get_user_regs(thread_t);
 		struct arm_saved_state *ss = get_user_regs(thread);
-		xzs_exec_mark_usb_u64("E03c pc", get_saved_state_pc(ss));
+		uint64_t pc = get_saved_state_pc(ss);
+		/*
+		 * Exec installs the hello map on the task. A thread resumed
+		 * through this path can still hold the pre-exec map, so the
+		 * hello entry faults as an invalid address.
+		 */
+		if (pc >= 0x100000000ULL && pc < 0x100004000ULL) {
+			thread->map = get_task_map(task);
+			xzs_exec_mark_usb("E03c map task");
+		}
+		xzs_exec_mark_usb_u64("E03c pc", pc);
 		xzs_exec_mark_usb_u64("E03c x0", get_saved_state_reg(ss, 0));
 		xzs_exec_mark_usb("E03c child bootstrap");
 	}

@@ -2285,7 +2285,21 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
 		    fault_addr >= 0x100000000ULL &&
 		    fault_addr < 0x100004000ULL) {
 			extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
-			xzs_exec_mark_usb_u64("E03d result", (uint64_t)result);
+			static uint32_t xzs_hello_fault_logs;
+			if (result == KERN_INVALID_ADDRESS) {
+				vm_map_t task_map = get_task_map(current_task());
+				if (task_map != VM_MAP_NULL && task_map != map) {
+					thread->map = task_map;
+					map = task_map;
+					result = vm_fault(map, vm_fault_addr, fault_type,
+					    FALSE, VM_KERN_MEMORY_NONE, THREAD_ABORTSAFE,
+					    NULL, 0);
+				}
+			}
+			if (xzs_hello_fault_logs < 3) {
+				xzs_hello_fault_logs++;
+				xzs_exec_mark_usb_u64("E03d result", (uint64_t)result);
+			}
 		}
 #endif
 		if (result == KERN_SUCCESS || result == KERN_ABORTED) {
