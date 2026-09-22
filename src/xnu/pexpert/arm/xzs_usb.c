@@ -2070,9 +2070,10 @@ xzs_t1y_process_event(uint32_t event)
 		    s_t1y_ep0_state == XZS_T1Y_EP0_WAIT_STATUS &&
 		    DWC3_DEPEVT_STATUS_PHASE(event) == DWC3_DEPEVT_STATUS_CONTROL_STATUS) {
 			if (xzs_t1y_start_status(ep) != 0) {
+				s_t1y_ep0_state = XZS_T1Y_EP0_WAIT_STATUS;
 				xzs_ep0_retained_report();
 				xzs_t1y_stall_and_restart();
-			} else if (s_t1y_completion == XZS_T1Y_COMPLETE_SET_CONFIGURATION) {
+			} else {
 				xzs_ep0_ck(48);
 			}
 		}
@@ -2124,6 +2125,21 @@ xzs_t1y_event_deferred(thread_call_param_t p0 __unused,
 		xzs_d6m4_put_hex64(event);
 		xzs_early_puts("\n");
 		xzs_t1y_process_event(event);
+	}
+	/*
+	 * The 60107b4 boot left EP0 in WAIT_STATUS after an IN XferComplete
+	 * and never observed the status XferNotReady. No setup TRB was armed
+	 * after that, so a later SET_CONFIGURATION could not be recorded.
+	 * Queue the status stage once the batch has been drained.
+	 */
+	if (s_t1y_ep0_state == XZS_T1Y_EP0_WAIT_STATUS) {
+		uint32_t status_ep = s_t1y_three_stage ?
+		    DWC3_PHYS_EP_CTRL_OUT : DWC3_PHYS_EP_CTRL_IN;
+		if (xzs_t1y_start_status(status_ep) != 0) {
+			s_t1y_ep0_state = XZS_T1Y_EP0_WAIT_STATUS;
+		} else {
+			xzs_ep0_ck(48);
+		}
 	}
 	if (g_xzs_usb_t1z_activation_pending && !g_xzs_usb_t1z_worker_entered) {
 		g_xzs_usb_t1z_worker_entered = 1;
