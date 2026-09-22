@@ -1970,13 +1970,27 @@ grade:
 	    load_result.entry_point < 0x100004000ULL) {
 		extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
 		    vm_map_address_t, vm_map_size_t);
+		extern void pmap_protect_options(pmap_t, vm_map_offset_t,
+		    vm_map_offset_t, vm_prot_t, unsigned int, void *);
 		extern volatile uint32_t xzs_early_puts_suppress;
+		pmap_t hello_pmap = get_task_pmap(task);
 		kern_return_t pkr;
+		/*
+		 * load_machfile leaves the text PTE without the AF bit the
+		 * promote helper requires. The same immediate protect used
+		 * for the shell page sets AF before UXN is cleared.
+		 */
+		xzs_exec_mark_usb("E09 protect");
+		pmap_protect_options(hello_pmap,
+		    0x100000000ULL, 0x100004000ULL,
+		    VM_PROT_READ | VM_PROT_EXECUTE,
+		    PMAP_OPTIONS_PROTECT_IMMEDIATE, NULL);
 		xzs_exec_mark_usb("E09 promote enter");
 		xzs_early_puts_suppress = 1;
 		pkr = xzs_promote_launchd_text_exec(
-		    get_task_pmap(task), 0x100000000ULL, 0x4000ULL);
+		    hello_pmap, 0x100000000ULL, 0x4000ULL);
 		xzs_early_puts_suppress = 0;
+		xzs_exec_mark_usb_u64("E09 kr", (uint64_t)pkr);
 		xzs_exec_mark_usb(pkr == KERN_SUCCESS ?
 		    "E09 UXN clear ok" : "E09 UXN clear failed");
 	} else {
@@ -2085,7 +2099,13 @@ grade:
 		 * space.
 		 */
 		ap = p->user_stack;
+#if CONFIG_XZS_BRINGUP
+		xzs_exec_mark_usb("E10 strings");
+#endif
 		error = exec_copyout_strings(imgp, &ap);
+#if CONFIG_XZS_BRINGUP
+		xzs_exec_mark_usb(error ? "E10 strings failed" : "E10 strings ok");
+#endif
 		if (error) {
 			vm_map_switch_back(switch_ctx);
 
