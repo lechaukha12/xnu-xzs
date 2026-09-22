@@ -329,8 +329,8 @@ fork1(proc_t parent_proc, thread_t *child_threadp, int kind, coalition_t *coalit
 
 #if CONFIG_XZS_BRINGUP
 		if (!spawn) {
-			extern void xzs_exec_mark(const char *tag);
-			xzs_exec_mark("E01a clone");
+			extern void xzs_exec_mark_usb(const char *tag);
+			xzs_exec_mark_usb("E01a clone");
 		}
 #endif
 		if (!spawn) {
@@ -502,6 +502,12 @@ fork_create_child(task_t parent_task,
 		extern void xzs_early_puts(const char *s);
 		xzs_breadcrumb(0xD600, 0x20);
 		xzs_early_puts("[XZS-D6M1] D600/20 PID1 task acquire/create ENTER\n");
+	}
+#endif
+#if CONFIG_XZS_BRINGUP
+	if (inherit_memory && !in_exec && !cloning_initproc) {
+		extern void xzs_exec_mark_usb(const char *tag);
+		xzs_exec_mark_usb("E01a0 task create");
 	}
 #endif
 	result = task_create_internal(parent_task,
