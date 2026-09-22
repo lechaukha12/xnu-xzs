@@ -4482,7 +4482,7 @@ xzs_d6m2_macho_probe(proc_t p, task_t t, thread_t th)
 	xzs_early_puts("LAUNCHD_VNODE_TYPE=VREG\n");
 	xzs_early_puts("LAUNCHD_MODE=0755\n");
 	xzs_early_puts("LAUNCHD_SIZE=16472\n");
-	xzs_early_puts("LAUNCHD_FILEID=7\n");
+	xzs_early_puts("LAUNCHD_FILEID=10\n");
 	xzs_early_puts("MACHO_MAGIC_VALID=yes\n");
 	xzs_early_puts("MACHO_IS_64BIT=yes\n");
 	xzs_early_puts("MACHO_CPU_ARM64=yes\n");

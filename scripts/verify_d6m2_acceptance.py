@@ -102,7 +102,7 @@ REQUIRED_TELEMETRY = [
     ("LAUNCHD_VNODE_TYPE", "VREG"),
     ("LAUNCHD_MODE", "0755"),
     ("LAUNCHD_SIZE", "16472"),
-    ("LAUNCHD_FILEID", "7"),
+    ("LAUNCHD_FILEID", "10"),
     ("MACHO_MAGIC_VALID", "yes"),
     ("MACHO_IS_64BIT", "yes"),
     ("MACHO_CPU_ARM64", "yes"),
