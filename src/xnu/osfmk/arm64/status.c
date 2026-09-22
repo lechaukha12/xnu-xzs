@@ -3905,9 +3905,9 @@ xzs_d6m4_monitor_and_report_r650(task_t t, thread_t th)
 		extern int xzs_usb_t1z_service(void);
 		extern volatile uint32_t g_xzs_diag_live_window_ms;
 		extern void xzs_usb_t1z_report(void);
+		extern void xzs_watchdog_pet(void);
 		(void)xzs_usb_t1z_service();
-		extern void ml_set_interrupts_enabled(boolean_t enable);
-		ml_set_interrupts_enabled(TRUE);
+		(void)ml_set_interrupts_enabled(TRUE);
 		if (g_xzs_diag_live_window_ms != 0) {
 			for (uint32_t waited = 0; waited < g_xzs_diag_live_window_ms; waited++) {
 				xzs_watchdog_pet();

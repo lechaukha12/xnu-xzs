@@ -1844,7 +1844,7 @@ grade:
 		    vm_map_address_t, vm_map_size_t);
 		extern void xzs_early_puts(const char *s);
 		kern_return_t pkr = xzs_promote_launchd_text_exec(
-		    vm_map_pmap(get_task_map(task)), 0x100000000ULL, 0x4000ULL);
+		    get_task_pmap(task), 0x100000000ULL, 0x4000ULL);
 		xzs_early_puts(pkr == KERN_SUCCESS ?
 		    "[XZS-EXEC] EL0 text promote ok\n" :
 		    "[XZS-EXEC] EL0 text promote failed\n");
