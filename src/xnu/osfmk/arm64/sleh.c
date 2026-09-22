@@ -2284,19 +2284,22 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
 		if ((fault_type & VM_PROT_EXECUTE) != 0 &&
 		    fault_addr >= 0x100000000ULL &&
 		    fault_addr < 0x100004000ULL) {
+			extern void xzs_exec_mark_usb(const char *tag);
 			extern void xzs_exec_mark_usb_u64(const char *tag, uint64_t val);
 			static uint32_t xzs_hello_fault_logs;
-			if (result == KERN_INVALID_ADDRESS) {
+			if (xzs_hello_fault_logs < 2 && result == KERN_INVALID_ADDRESS) {
 				vm_map_t task_map = get_task_map(current_task());
+				xzs_exec_mark_usb(task_map == map ?
+				    "E03d same map" : "E03d other map");
 				if (task_map != VM_MAP_NULL && task_map != map) {
-					thread->map = task_map;
-					map = task_map;
-					result = vm_fault(map, vm_fault_addr, fault_type,
+					kern_return_t task_kr = vm_fault(task_map,
+					    vm_fault_addr, fault_type,
 					    FALSE, VM_KERN_MEMORY_NONE, THREAD_ABORTSAFE,
 					    NULL, 0);
+					xzs_exec_mark_usb_u64("E03d taskkr", (uint64_t)task_kr);
 				}
 			}
-			if (xzs_hello_fault_logs < 3) {
+			if (xzs_hello_fault_logs < 2) {
 				xzs_hello_fault_logs++;
 				xzs_exec_mark_usb_u64("E03d result", (uint64_t)result);
 			}
