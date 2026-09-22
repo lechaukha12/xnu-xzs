@@ -421,7 +421,12 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
             print("SET_CONFIGURATION_RC=not_called")
             print("SET_CONFIGURATION_REASON=already_active")
         else:
+            t0 = time.perf_counter()
+            print("SET_CONFIGURATION_START_S=%.6f" % t0)
             set_rc = raw_set_configuration(dev, EXPECTED_CONFIGURATION)
+            t1 = time.perf_counter()
+            print("SET_CONFIGURATION_END_S=%.6f" % t1)
+            print("SET_CONFIGURATION_DURATION_S=%.6f" % (t1 - t0))
             print("SET_CONFIGURATION_CALLED=yes")
             print("SET_CONFIGURATION_RC=%d" % set_rc)
             print("SET_CONFIGURATION_ERROR_NAME=%s" % libusb_error_name(set_rc))
@@ -431,6 +436,10 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
             print("GET_CONFIGURATION_AFTER_SET_RC=%s" % rc2)
             if rc2 == 0:
                 active = active2
+            if set_rc != 0 or active != EXPECTED_CONFIGURATION:
+                print_not_attempted("set_configuration_failed")
+                release_device(dev)
+                return None
 
         print("USB_DEVICE_FOUND=yes")
         print("VID_PID=%04x:%04x" % (dev.idVendor, dev.idProduct))

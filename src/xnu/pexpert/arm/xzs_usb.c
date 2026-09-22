@@ -1119,6 +1119,96 @@ xzs_t1x_ep0_halted_setup(void)
 }
 
 /*
+ * Retained EP0 state. Updated on the control path and copied to the early
+ * console, which is what pstore keeps if Bulk never comes up.
+ * DEPCMD.HIPRI_FORCERM is bit 11. ENDTRANSFER uses it so a USB reset does
+ * not leave a setup TRB that hardware has already retired.
+ */
+#define XZS_EP_CMD_POLL_MAX      5000u
+
+static volatile uint32_t s_ep0_last_ck = 0;
+static volatile uint32_t s_ep0_bm = 0;
+static volatile uint32_t s_ep0_req = 0;
+static volatile uint32_t s_ep0_wvalue = 0;
+static volatile uint32_t s_ep0_windex = 0;
+static volatile uint32_t s_ep0_wlength = 0;
+static volatile uint32_t s_ep0_last_event = 0;
+static volatile uint32_t s_ep0_dep = 0;
+static volatile uint32_t s_ep0_cmd = 0;
+static volatile uint32_t s_ep0_cmd_before = 0;
+static volatile uint32_t s_ep0_cmd_after = 0;
+static volatile uint32_t s_ep0_cmd_status = 0;
+static volatile uint32_t s_ep0_cmd_polls = 0;
+static volatile uint32_t s_ep0_cfg_pending = 0;
+
+static void
+xzs_ep0_ck(unsigned id)
+{
+	const char *line = NULL;
+
+	s_ep0_last_ck = id;
+	switch (id) {
+	case 0: line = "[XZS-EP0] C00 USB reset\n"; break;
+	case 1: line = "[XZS-EP0] C01 connection done\n"; break;
+	case 10: line = "[XZS-EP0] C10 SETUP received\n"; break;
+	case 20: line = "[XZS-EP0] C20 SET_ADDRESS received\n"; break;
+	case 21: line = "[XZS-EP0] C21 SET_ADDRESS completed\n"; break;
+	case 30: line = "[XZS-EP0] C30 GET_DESCRIPTOR received\n"; break;
+	case 31: line = "[XZS-EP0] C31 GET_DESCRIPTOR completed\n"; break;
+	case 40: line = "[XZS-EP0] C40 SET_CONFIGURATION received\n"; break;
+	case 41: line = "[XZS-EP0] C41 configuration value\n"; break;
+	case 42: line = "[XZS-EP0] C42 endpoint configuration begin\n"; break;
+	case 43: line = "[XZS-EP0] C43 EP2 OUT configured\n"; break;
+	case 44: line = "[XZS-EP0] C44 EP3 IN configured\n"; break;
+	case 45: line = "[XZS-EP0] C45 DALEPENA updated\n"; break;
+	case 46: line = "[XZS-EP0] C46 OUT TRB prepared\n"; break;
+	case 47: line = "[XZS-EP0] C47 endpoint start-transfer issued\n"; break;
+	case 48: line = "[XZS-EP0] C48 status stage queued\n"; break;
+	case 49: line = "[XZS-EP0] C49 SET_CONFIGURATION completed\n"; break;
+	default: break;
+	}
+	if (line != NULL) {
+		xzs_early_puts(line);
+	}
+}
+
+static void
+xzs_ep0_retained_report(void)
+{
+	xzs_early_puts("[XZS-EP0] LAST_EP0_REQUEST=");
+	xzs_d6m4_put_hex64(s_ep0_req);
+	xzs_early_puts("\n[XZS-EP0] LAST_EP0_STATE=");
+	xzs_d6m4_put_hex64((uint64_t)s_t1y_ep0_state);
+	xzs_early_puts("\n[XZS-EP0] LAST_EP0_CHECKPOINT=");
+	xzs_d6m4_put_hex64(s_ep0_last_ck);
+	xzs_early_puts("\n[XZS-EP0] LAST_DWC3_EVENT=");
+	xzs_d6m4_put_hex64(s_ep0_last_event);
+	xzs_early_puts("\n[XZS-EP0] LAST_DEPCMD=");
+	xzs_d6m4_put_hex64(s_ep0_cmd);
+	xzs_early_puts("\n[XZS-EP0] DEP=");
+	xzs_d6m4_put_hex64(s_ep0_dep);
+	xzs_early_puts("\n[XZS-EP0] COMMAND_ACTIVE_BEFORE=");
+	xzs_d6m4_put_hex64(s_ep0_cmd_before);
+	xzs_early_puts("\n[XZS-EP0] COMMAND_ACTIVE_AFTER=");
+	xzs_d6m4_put_hex64(s_ep0_cmd_after);
+	xzs_early_puts("\n[XZS-EP0] STATUS=");
+	xzs_d6m4_put_hex64(s_ep0_cmd_status);
+	xzs_early_puts("\n[XZS-EP0] BOUNDED_POLL_COUNT=");
+	xzs_d6m4_put_hex64(s_ep0_cmd_polls);
+	xzs_early_puts("\n[XZS-EP0] EP0_SETUP_ARMED=");
+	xzs_early_puts(s_t1y_ep0_setup_armed ? "yes\n" : "no\n");
+	xzs_early_puts("[XZS-EP0] CONFIGURATION_VALUE=");
+	xzs_d6m4_put_hex64(g_xzs_usb_t1y_configuration_value);
+	xzs_early_puts("\n[XZS-EP0] EP2_ENABLED=");
+	xzs_early_puts(g_xzs_usb_t1z_ep2_configured ? "yes\n" : "no\n");
+	xzs_early_puts("[XZS-EP0] EP3_ENABLED=");
+	xzs_early_puts(g_xzs_usb_t1z_ep3_configured ? "yes\n" : "no\n");
+	xzs_early_puts("[XZS-EP0] DALEPENA=");
+	xzs_d6m4_put_hex64(g_xzs_usb_t1z_dalepena);
+	xzs_early_puts("\n");
+}
+
+/*
  * T1-Y EP0-only command gate.  DEPCMD.STATUS is bits 15:12; every command
  * has a bounded CMDACT wait and a nonzero status is terminal for that action.
  */
@@ -1126,15 +1216,25 @@ static int
 xzs_t1y_ep_cmd(uint32_t ep, uint32_t opcode, uint32_t p0, uint32_t p1,
     uint32_t p2, uint32_t *completed)
 {
+	uint32_t before;
+	unsigned polls = 0;
+
+	before = dwc3_read32(DWC3_DEPCMD(ep));
+	s_ep0_dep = ep;
+	s_ep0_cmd = opcode;
+	s_ep0_cmd_before = (before & DEPCMD_CMDACT) ? 1u : 0u;
 	xzs_early_puts("[XZS-D7T1] D740/Y BEFORE endpoint command\n");
 	dwc3_write32(DWC3_DEPCMDPAR0(ep), p0);
 	dwc3_write32(DWC3_DEPCMDPAR1(ep), p1);
 	dwc3_write32(DWC3_DEPCMDPAR2(ep), p2);
 	dwc3_write32(DWC3_DEPCMD(ep), opcode | DEPCMD_CMDACT);
 
-	for (unsigned i = 0; i < 5000; i++) {
+	for (; polls < XZS_EP_CMD_POLL_MAX; polls++) {
 		uint32_t raw = dwc3_read32(DWC3_DEPCMD(ep));
 		if ((raw & DEPCMD_CMDACT) == 0) {
+			s_ep0_cmd_after = 0;
+			s_ep0_cmd_status = DEPCMD_STATUS(raw);
+			s_ep0_cmd_polls = polls + 1u;
 			if (completed != NULL) {
 				*completed = raw;
 			}
@@ -1142,13 +1242,18 @@ xzs_t1y_ep_cmd(uint32_t ep, uint32_t opcode, uint32_t p0, uint32_t p1,
 				return 0;
 			}
 			g_xzs_usb_t1y_ep_cmd_failures++;
+			xzs_early_puts("[XZS-EP0] DEPCMD status nonzero\n");
 			return -2;
 		}
 		xzs_watchdog_pet();
 		delay(10);
 	}
 
+	s_ep0_cmd_after = 1;
+	s_ep0_cmd_status = 0xffffffffu;
+	s_ep0_cmd_polls = polls;
 	g_xzs_usb_t1y_ep_cmd_failures++;
+	xzs_early_puts("[XZS-EP0] DEPCMD CMDACT stuck\n");
 	return -1;
 }
 
@@ -1256,22 +1361,30 @@ xzs_t1y_finish_control_transfer(void)
 	switch (s_t1y_completion) {
 	case XZS_T1Y_COMPLETE_DEVICE_DESC:
 		g_xzs_usb_t1y_device_desc_complete = 1;
+		xzs_ep0_ck(31);
 		xzs_breadcrumb(0xD740, 0x752);
 		xzs_early_puts("[XZS-D7T1] D740/Y52 Device descriptor completion\n");
 		break;
 	case XZS_T1Y_COMPLETE_CONFIG_DESC:
 		g_xzs_usb_t1y_config_desc_complete = 1;
+		xzs_ep0_ck(31);
 		xzs_breadcrumb(0xD740, 0x771);
 		xzs_early_puts("[XZS-D7T1] D740/Y71 Configuration descriptor completion\n");
 		break;
 	case XZS_T1Y_COMPLETE_SET_ADDRESS:
 		g_xzs_usb_t1y_set_address_complete = 1;
+		xzs_ep0_ck(21);
 		xzs_breadcrumb(0xD740, 0x761);
 		xzs_early_puts("[XZS-D7T1] D740/Y61 SET_ADDRESS completion\n");
 		break;
 	case XZS_T1Y_COMPLETE_SET_CONFIGURATION:
+		g_xzs_usb_t1y_configuration_value = s_ep0_cfg_pending;
+		g_xzs_usb_configured = (s_ep0_cfg_pending == 1 &&
+		    g_xzs_usb_t1z_ep2_configured && g_xzs_usb_t1z_ep3_configured);
 		g_xzs_usb_t1y_set_configuration_complete = 1;
-		g_xzs_usb_enumerated = (g_xzs_usb_t1y_configuration_value == 1);
+		g_xzs_usb_enumerated = g_xzs_usb_configured;
+		xzs_ep0_ck(49);
+		xzs_ep0_retained_report();
 		xzs_breadcrumb(0xD740, 0x781);
 		xzs_early_puts("[XZS-D7T1] D740/Y81 SET_CONFIGURATION completion\n");
 		if (g_xzs_usb_enumerated) {
@@ -1281,9 +1394,6 @@ xzs_t1y_finish_control_transfer(void)
 			xzs_early_puts("[XZS-D7T1] D740/Y98 acceptance\n");
 			xzs_breadcrumb(0xD740, 0x799);
 			xzs_early_puts("[XZS-D7T1] D740/Y99 PASS\n");
-			/* Long EP2/EP3 DEPCMD work stays on this thread_call, after it returns to the drain loop. */
-			g_xzs_usb_t1z_activation_pending = 1;
-			xzs_early_puts("[XZS-D7T1] D740/Z00 SET_CONFIGURATION activation pending\n");
 		}
 		break;
 	case XZS_T1Y_COMPLETE_NONE:
@@ -1294,6 +1404,8 @@ xzs_t1y_finish_control_transfer(void)
 	s_t1y_ep0_setup_armed = FALSE;
 	(void)xzs_t1y_submit_setup();
 }
+
+static void xzs_t1z_worker(void);
 
 static void
 xzs_t1y_handle_setup(void)
@@ -1312,7 +1424,24 @@ xzs_t1y_handle_setup(void)
 	value = pkt->wValue;
 	index = pkt->wIndex;
 	length = pkt->wLength;
+	s_ep0_bm = pkt->bmRequestType;
+	s_ep0_req = pkt->bRequest;
+	s_ep0_wvalue = value;
+	s_ep0_windex = index;
+	s_ep0_wlength = length;
 	g_xzs_usb_t1y_setup_observed = 1;
+	xzs_ep0_ck(10);
+	xzs_early_puts("[XZS-EP0] C11 bmRequestType=");
+	xzs_d6m4_put_hex64(s_ep0_bm);
+	xzs_early_puts("\n[XZS-EP0] C12 bRequest=");
+	xzs_d6m4_put_hex64(s_ep0_req);
+	xzs_early_puts("\n[XZS-EP0] C13 wValue=");
+	xzs_d6m4_put_hex64(s_ep0_wvalue);
+	xzs_early_puts("\n[XZS-EP0] C14 wIndex=");
+	xzs_d6m4_put_hex64(s_ep0_windex);
+	xzs_early_puts("\n[XZS-EP0] C15 wLength=");
+	xzs_d6m4_put_hex64(s_ep0_wlength);
+	xzs_early_puts("\n");
 	xzs_breadcrumb(0xD740, 0x750);
 	xzs_early_puts("[XZS-D7T1] D740/Y50 first EP0 SETUP packet\n");
 
@@ -1332,12 +1461,14 @@ xzs_t1y_handle_setup(void)
 			descriptor = s_device_descriptor;
 			descriptor_length = sizeof(s_device_descriptor);
 			completion = XZS_T1Y_COMPLETE_DEVICE_DESC;
+			xzs_ep0_ck(30);
 			xzs_breadcrumb(0xD740, 0x751);
 			xzs_early_puts("[XZS-D7T1] D740/Y51 GET_DESCRIPTOR(Device) request\n");
 		} else if (type == USB_DT_CONFIG && descriptor_index == 0 && index == 0) {
 			descriptor = s_config_descriptor;
 			descriptor_length = sizeof(s_config_descriptor);
 			completion = XZS_T1Y_COMPLETE_CONFIG_DESC;
+			xzs_ep0_ck(30);
 			xzs_breadcrumb(0xD740, 0x770);
 			xzs_early_puts("[XZS-D7T1] D740/Y70 Configuration descriptor request\n");
 		} else if (type == USB_DT_DEVICE_QUALIFIER && descriptor_index == 0 && index == 0) {
@@ -1373,6 +1504,7 @@ xzs_t1y_handle_setup(void)
 			s_t1y_completion = XZS_T1Y_COMPLETE_SET_ADDRESS;
 			s_t1y_three_stage = FALSE;
 			s_t1y_ep0_state = XZS_T1Y_EP0_WAIT_STATUS;
+			xzs_ep0_ck(20);
 			xzs_breadcrumb(0xD740, 0x760);
 			xzs_early_puts("[XZS-D7T1] D740/Y60 SET_ADDRESS request\n");
 			return;
@@ -1381,9 +1513,36 @@ xzs_t1y_handle_setup(void)
 	case USB_REQ_SET_CONFIGURATION:
 		if (pkt->bmRequestType == 0 && index == 0 && length == 0 && value <= 1) {
 			g_xzs_usb_set_cfg_count++;
-			g_xzs_usb_t1y_configuration_value = value;
-			g_xzs_usb_configured = (value == 1);
+			/*
+			 * Remember the requested value, but do not publish it as
+			 * the active configuration until the status stage finishes.
+			 * Endpoint commands run before that status stage and do not
+			 * wait for later Bulk traffic.
+			 */
+			s_ep0_cfg_pending = value;
 			g_xzs_usb_console_ready = 0;
+			xzs_ep0_ck(40);
+			xzs_ep0_ck(41);
+			xzs_early_puts("[XZS-EP0] C41 value=");
+			xzs_d6m4_put_hex64(value);
+			xzs_early_puts("\n");
+			if (value == 1) {
+				xzs_ep0_ck(42);
+				if (!g_xzs_usb_t1z_worker_entered) {
+					g_xzs_usb_t1z_worker_entered = 1;
+					xzs_t1z_worker();
+				}
+				if (g_xzs_usb_t1z_failed ||
+				    !g_xzs_usb_t1z_ep2_configured ||
+				    !g_xzs_usb_t1z_ep3_configured) {
+					xzs_ep0_retained_report();
+					xzs_t1y_stall_and_restart();
+					return;
+				}
+			} else {
+				g_xzs_usb_t1z_ep2_configured = 0;
+				g_xzs_usb_t1z_ep3_configured = 0;
+			}
 			s_t1y_completion = XZS_T1Y_COMPLETE_SET_CONFIGURATION;
 			s_t1y_three_stage = FALSE;
 			s_t1y_ep0_state = XZS_T1Y_EP0_WAIT_STATUS;
@@ -1419,6 +1578,7 @@ xzs_t1y_handle_setup(void)
 }
 
 static void xzs_t1z_forget_bulk_after_bus_reset(void);
+static void xzs_t1z_worker(void);
 
 static void
 xzs_t1y_ep0_only_reset(void)
@@ -1426,23 +1586,29 @@ xzs_t1y_ep0_only_reset(void)
 	uint32_t dcfg = dwc3_read32(DWC3_DCFG);
 
 	g_xzs_usb_reset_count++;
+	xzs_ep0_ck(0);
 	xzs_breadcrumb(0xD740, 0x741);
 	xzs_early_puts("[XZS-D7T1] D740/Y41 USB Reset\n");
 	if (dcfg & DWC3_DCFG_DEVADDR_MASK) {
 		dwc3_write32(DWC3_DCFG, dcfg & ~DWC3_DCFG_DEVADDR_MASK);
 	}
 	g_xzs_usb_t1y_configuration_value = 0;
+	s_ep0_cfg_pending = 0;
 	g_xzs_usb_configured = 0;
 	g_xzs_usb_enumerated = 0;
 	g_xzs_usb_console_ready = 0;
 	s_t1y_completion = XZS_T1Y_COMPLETE_NONE;
 	s_t1y_three_stage = FALSE;
-	/* DWC3 keeps EP0 configured across USB reset.  Keep the armed SETUP TRB. */
-	if (!s_t1y_ep0_setup_armed) {
-		(void)xzs_t1y_submit_setup();
-	} else {
-		s_t1y_ep0_state = XZS_T1Y_EP0_SETUP;
-	}
+	/*
+	 * USB reset ends every transfer. Do not keep a setup TRB that
+	 * software still marks armed: its HWO bit is stale. Arm one new TRB.
+	 */
+	s_t1y_ep0_setup_armed = FALSE;
+	s_ep0_out_rsc_idx = 0;
+	s_ep0_in_rsc_idx = 0;
+	s_ep0_setup_trb.ctrl = 0;
+	xzs_dma_clean_poc((vm_offset_t)&s_ep0_setup_trb, sizeof(s_ep0_setup_trb));
+	(void)xzs_t1y_submit_setup();
 	/*
 	 * A bus reset drops bulk endpoint state. Allow the next
 	 * SET_CONFIGURATION to run the existing Z worker again so a
@@ -1822,6 +1988,7 @@ xzs_t1z_worker(void)
 		return;
 	}
 	g_xzs_usb_t1z_ep2_configured = 1;
+	xzs_ep0_ck(43);
 	xzs_early_puts("[XZS-D7T1] D740/Z20 EP2 SETEPCONFIG+SETTRANSFRESOURCE\n");
 
 	p0 = DWC3_DEPCFG_EP_TYPE(DWC3_EP_TYPE_BULK) |
@@ -1837,6 +2004,7 @@ xzs_t1z_worker(void)
 		return;
 	}
 	g_xzs_usb_t1z_ep3_configured = 1;
+	xzs_ep0_ck(44);
 	xzs_early_puts("[XZS-D7T1] D740/Z21 EP3 SETEPCONFIG+SETTRANSFRESOURCE\n");
 
 	dalep = dwc3_read32(DWC3_DALEPENA);
@@ -1850,19 +2018,23 @@ xzs_t1z_worker(void)
 		xzs_early_puts("[XZS-D7T1] D740/Z22 DALEPENA readback failed\n");
 		return;
 	}
+	xzs_ep0_ck(45);
 	xzs_early_puts("[XZS-D7T1] D740/Z22 DALEPENA EP2+EP3 enabled\n");
 	s_t1z_phase = XZS_T1Z_PHASE_OUT1;
+	xzs_ep0_ck(46);
 	if (xzs_t1z_arm_out() != 0) {
 		g_xzs_usb_t1z_failed = 1;
 		xzs_early_puts("[XZS-D7T1] D740/Z30 Bulk OUT prime failed\n");
 		return;
 	}
+	xzs_ep0_ck(47);
 	xzs_early_puts("[XZS-D7T1] D740/Z30 Bulk OUT primed\n");
 }
 
 static void
 xzs_t1y_process_event(uint32_t event)
 {
+	s_ep0_last_event = event;
 	if ((event & 1u) == 0) {
 		uint32_t ep = (event >> 1) & 0x1fu;
 		uint32_t type = (event >> 6) & 0x0fu;
@@ -1898,7 +2070,10 @@ xzs_t1y_process_event(uint32_t event)
 		    s_t1y_ep0_state == XZS_T1Y_EP0_WAIT_STATUS &&
 		    DWC3_DEPEVT_STATUS_PHASE(event) == DWC3_DEPEVT_STATUS_CONTROL_STATUS) {
 			if (xzs_t1y_start_status(ep) != 0) {
+				xzs_ep0_retained_report();
 				xzs_t1y_stall_and_restart();
+			} else if (s_t1y_completion == XZS_T1Y_COMPLETE_SET_CONFIGURATION) {
+				xzs_ep0_ck(48);
 			}
 		}
 		return;
@@ -1919,6 +2094,7 @@ xzs_t1y_process_event(uint32_t event)
 		g_xzs_usb_t1y_connect_speed = g_xzs_usb_dsts & DWC3_DSTS_CONNECTSPD_MASK;
 		g_xzs_usb_t1y_link_state =
 		    (g_xzs_usb_dsts & DWC3_DSTS_USBLNKST_MASK) >> 18;
+		xzs_ep0_ck(1);
 		xzs_breadcrumb(0xD740, 0x742);
 		xzs_early_puts("[XZS-D7T1] D740/Y42 ConnectDone\n");
 		break;
@@ -2318,6 +2494,7 @@ xzs_usb_t1z_report(void)
 	xzs_early_puts(xzs_d7m3_complete ? "yes\n" : "no\n");
 	xzs_early_puts("EP_COMMAND_FAILURES="); xzs_t1z_put_hex(g_xzs_usb_t1y_ep_cmd_failures);
 	xzs_early_puts("EVENT_RING_DROPS="); xzs_t1z_put_hex(g_xzs_usb_t1y_event_ring_drops);
+	xzs_ep0_retained_report();
 	xzs_early_puts("AVAILABLE_SHELL_COMMANDS=none\n");
 	xzs_early_puts("INTERACTIVE_TEST_COMMAND_1=none\n");
 	xzs_early_puts("INTERACTIVE_TEST_COMMAND_2=none\n");
