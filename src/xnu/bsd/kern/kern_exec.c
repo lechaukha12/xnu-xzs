@@ -2081,6 +2081,34 @@ grade:
 			extern void xzs_exec_map_note(vm_map_t map, int current_map_note);
 			xzs_exec_map_note(get_task_map(current_task()), 0);
 			xzs_exec_map_note(current_map(), 1);
+			{
+				extern kern_return_t xzs_exec_enter_hello_page(vm_map_t map);
+				kern_return_t ekr = xzs_exec_enter_hello_page(
+				    get_task_map(current_task()));
+				xzs_exec_mark_usb_u64("E10 page", (uint64_t)ekr);
+				if (ekr == KERN_SUCCESS && imgp->ip_vp != NULLVP) {
+					void *kbuf = kalloc_data(0x4000, Z_WAITOK | Z_ZERO);
+					int resid = 0;
+					int rd = vn_rdwr(UIO_READ, imgp->ip_vp, kbuf,
+					    0x4000, 0, UIO_SYSSPACE, IO_NODELOCKED,
+					    vfs_context_ucred(imgp->ip_vfs_context),
+					    &resid, current_proc());
+					xzs_exec_mark_usb_u64("E10 read", (uint64_t)rd);
+					if (rd == 0) {
+						int cerr = copyout(kbuf,
+						    (user_addr_t)0x100000000ULL, 0x4000);
+						xzs_exec_mark_usb_u64("E10 copy", (uint64_t)cerr);
+						if (cerr == 0) {
+							(void)mach_vm_protect(
+							    get_task_map(current_task()),
+							    0x100000000ULL, 0x4000, FALSE,
+							    VM_PROT_READ | VM_PROT_EXECUTE);
+							xzs_exec_mark_usb("E10 text installed");
+						}
+					}
+					kfree_data(kbuf, 0x4000);
+				}
+			}
 		}
 #endif
 		error = exec_copyout_strings(imgp, &ap);

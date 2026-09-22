@@ -14144,6 +14144,31 @@ xzs_exec_map_note(vm_map_t map, int current_map_note)
 	}
 	vm_map_unlock_read(map);
 }
+
+kern_return_t
+xzs_exec_enter_hello_page(vm_map_t map)
+{
+	vm_map_offset_t addr = 0x100000000ULL;
+	vm_map_kernel_flags_t kflags = VM_MAP_KERNEL_FLAGS_FIXED();
+	vm_map_entry_t entry = VM_MAP_ENTRY_NULL;
+	kern_return_t kr;
+
+	if (map == VM_MAP_NULL) {
+		return KERN_INVALID_ARGUMENT;
+	}
+	vm_map_lock_read(map);
+	if (vm_map_lookup_entry(map, addr, &entry)) {
+		vm_map_unlock_read(map);
+		return KERN_SUCCESS;
+	}
+	vm_map_unlock_read(map);
+	kr = vm_map_enter(map, &addr, 0x4000, 0, kflags,
+	    VM_OBJECT_NULL, 0, FALSE,
+	    VM_PROT_READ | VM_PROT_WRITE,
+	    VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
+	    VM_INHERIT_DEFAULT);
+	return kr;
+}
 #endif
 
 kern_return_t
