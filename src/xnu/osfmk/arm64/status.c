@@ -2560,7 +2560,7 @@ thread_set_child(thread_t child,
  */
 void
 xzs_fork_child_prepare(thread_t child, uint64_t *pc, uint64_t *x0,
-    uint64_t *cpsr, int *cont_repaired)
+    uint64_t *cpsr, uint64_t *sp, uint64_t *lr, int *cont_repaired)
 {
 	struct arm_saved_state *child_state;
 
@@ -2577,6 +2577,8 @@ xzs_fork_child_prepare(thread_t child, uint64_t *pc, uint64_t *x0,
 	*pc = get_saved_state_pc(child_state);
 	*x0 = get_saved_state_reg(child_state, 0);
 	*cpsr = get_saved_state_cpsr(child_state);
+	*sp = get_saved_state_sp(child_state);
+	*lr = get_saved_state_lr(child_state);
 	thread_mtx_unlock(child);
 }
 

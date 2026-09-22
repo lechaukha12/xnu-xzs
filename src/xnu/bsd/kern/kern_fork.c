@@ -687,16 +687,21 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 			extern void xzs_exec_mark(const char *tag);
 			extern void xzs_exec_mark_u64(const char *tag, uint64_t val);
 			extern void xzs_fork_child_prepare(thread_t child, uint64_t *pc,
-			    uint64_t *x0, uint64_t *cpsr, int *cont_repaired);
+			    uint64_t *x0, uint64_t *cpsr, uint64_t *sp, uint64_t *lr,
+			    int *cont_repaired);
 			extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
 			    vm_map_address_t, vm_map_size_t);
 			uint64_t child_pc;
 			uint64_t child_x0;
 			uint64_t child_cpsr;
+			uint64_t child_sp;
+			uint64_t child_lr;
 			int cont_repaired = 0;
 			kern_return_t fault_kr;
+			kern_return_t stack_kr;
 			kern_return_t promote_kr;
 			pmap_t child_pmap;
+			vm_map_t child_map;
 
 			/*
 			 * The child is still on the fork return-wait. Re-assert the
@@ -706,14 +711,39 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 			 * loaded later; this page is the fork return site in /bin/sh.
 			 */
 			xzs_fork_child_prepare(child_thread, &child_pc, &child_x0,
-			    &child_cpsr, &cont_repaired);
+			    &child_cpsr, &child_sp, &child_lr, &cont_repaired);
+			xzs_exec_mark_u64("E03 sp", child_sp);
+			xzs_exec_mark_u64("E03 lr", child_lr);
+			child_map = get_task_map(child_task);
 			xzs_exec_mark("E03 text fault enter");
-			fault_kr = vm_fault(get_task_map(child_task),
+			fault_kr = vm_fault(child_map,
 			    0x100000000ULL,
 			    VM_PROT_READ | VM_PROT_EXECUTE,
 			    FALSE, VM_KERN_MEMORY_NONE,
 			    THREAD_UNINT, NULL, 0);
 			xzs_exec_mark_u64("E03 text fault", (uint64_t)fault_kr);
+			/*
+			 * The fork return site does not touch memory, but the
+			 * execve arguments and the shell frame live above SP.
+			 * Fault those pages in now so copyin does not depend on
+			 * the child's first data abort.
+			 */
+			if (child_sp >= 0x4000ULL) {
+				stack_kr = vm_fault(child_map,
+				    child_sp & ~0x3fffULL,
+				    VM_PROT_READ | VM_PROT_WRITE,
+				    FALSE, VM_KERN_MEMORY_NONE,
+				    THREAD_UNINT, NULL, 0);
+				xzs_exec_mark_u64("E03 stack fault", (uint64_t)stack_kr);
+				stack_kr = vm_fault(child_map,
+				    (child_sp + 0x200) & ~0x3fffULL,
+				    VM_PROT_READ | VM_PROT_WRITE,
+				    FALSE, VM_KERN_MEMORY_NONE,
+				    THREAD_UNINT, NULL, 0);
+				xzs_exec_mark_u64("E03 stack hi", (uint64_t)stack_kr);
+			} else {
+				xzs_exec_mark("E03 stack skipped");
+			}
 			child_pmap = get_task_pmap(child_task);
 			if (fault_kr == KERN_SUCCESS) {
 				pmap_protect_options(child_pmap,

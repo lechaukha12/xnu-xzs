@@ -5458,6 +5458,10 @@ execve(proc_t p, struct execve_args *uap, int32_t *retval)
 	struct __mac_execve_args muap;
 	int err;
 
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark("E04b execve syscall");
+#endif
+
 	memoryshot(DBG_VM_EXECVE, DBG_FUNC_NONE);
 
 	muap.fname = uap->fname;

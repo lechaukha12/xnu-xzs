@@ -768,6 +768,14 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
 	bool is_user = PSR64_IS_USER(get_saved_state_cpsr(state));
 
 #if CONFIG_XZS_BRINGUP
+	if (is_user && class == ESR_EC_SVC_64 &&
+	    saved_state64(state)->x[16] == 59) {
+		extern void xzs_exec_mark_usb(const char *tag);
+		xzs_exec_mark_usb("E03e exec svc");
+	}
+#endif
+
+#if CONFIG_XZS_BRINGUP
 	extern void xzs_breadcrumb(uint32_t cp, uint32_t err);
 	extern void xzs_early_puts(const char *s);
 	extern volatile boolean_t xzs_d6m4_probe_armed;
