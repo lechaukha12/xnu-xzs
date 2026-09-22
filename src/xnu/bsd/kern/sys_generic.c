@@ -713,6 +713,12 @@ write_nocancel(struct proc *p, struct write_nocancel_args *uap, user_ssize_t *re
 int
 write(struct proc *p, struct write_args *uap, user_ssize_t *retval)
 {
+#if CONFIG_XZS_BRINGUP
+	if (p->p_pid != 1) {
+		extern void xzs_exec_mark(const char *tag);
+		xzs_exec_mark("E20 child write");
+	}
+#endif
 	__pthread_testcancel(1);
 	return write_nocancel(p, (struct write_nocancel_args *)uap, retval);
 }

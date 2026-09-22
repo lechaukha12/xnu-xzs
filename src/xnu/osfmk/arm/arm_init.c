@@ -354,7 +354,8 @@ void xzs_panic_hook(const char *str) {
 	if (*stg == 0) {
 		*stg = 0x2ff; /* Panic stage marker if not already set */
 	}
-	xzs_early_puts("\n*** XNU EARLY PANIC TRAPPED ***\n");
+	xzs_early_puts("\nPANIC_ENTERED=yes\n");
+	xzs_early_puts("*** XNU EARLY PANIC TRAPPED ***\n");
 	if (str) {
 		xzs_early_puts(str);
 		xzs_early_puts("\n");

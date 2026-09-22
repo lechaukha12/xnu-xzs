@@ -263,17 +263,18 @@ cmd_ls(int argc, char **argv, const char *cwd)
 		if (n == 0) {
 			break;
 		}
-		while (off + 21 < n) {
-			unsigned short reclen = *(unsigned short *)(buf + off + 16);
-			unsigned short namlen = *(unsigned short *)(buf + off + 18);
-			if (reclen < 21 || off + reclen > n) {
+		while (off + 8 <= n) {
+			unsigned short reclen = *(unsigned short *)(buf + off + 4);
+			unsigned char namlen = *(unsigned char *)(buf + off + 7);
+			if (reclen < 9 || off + reclen > n ||
+			    (unsigned long)namlen + 8 > reclen || namlen > 63) {
 				break;
 			}
-			if (namlen > 0 && namlen < 64) {
+			{
 				char name[64];
 				int i;
 				for (i = 0; i < namlen; i++) {
-					name[i] = buf[off + 21 + i];
+					name[i] = buf[off + 8 + i];
 				}
 				name[namlen] = 0;
 				wr(name);

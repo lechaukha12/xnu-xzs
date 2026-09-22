@@ -11113,6 +11113,15 @@ getdirentries(__unused struct proc *p, struct getdirentries_args *uap, int32_t *
 	    &bytesread, &offset, &eofflag, 0);
 
 	if (error == 0) {
+#if CONFIG_XZS_BRINGUP
+		{
+			extern void xzs_early_puts(const char *s);
+			extern void xzs_d6m4_put_hex64(uint64_t v);
+			xzs_early_puts("[XZS-LS] getdirentries bytes=");
+			xzs_d6m4_put_hex64((uint64_t)bytesread);
+			xzs_early_puts("\n");
+		}
+#endif
 		if (proc_is64bit(p)) {
 			user64_long_t base = (user64_long_t)offset;
 			error = copyout((caddr_t)&base, uap->basep, sizeof(user64_long_t));

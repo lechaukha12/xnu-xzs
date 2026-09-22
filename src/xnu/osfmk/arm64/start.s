@@ -1371,6 +1371,9 @@ xzs_exc_common:
 	.globl EXT(xzs_spin_halt)
 LEXT(xzs_spin_halt)
 xzs_spin_halt:
+	adrp		x0, str_spin_halt@page
+	add		x0, x0, str_spin_halt@pageoff
+	bl		EXT(xzs_early_puts)
 	// Flush entire persistent RAM buffers to physical DRAM (Point of Coherency)
 	MOV64	x0, 0x80060000
 	MOV64	x1, 0x80070000
@@ -2088,6 +2091,8 @@ str_newline:
 	.asciz "\n"
 str_exc_footer:
 	.asciz "\n*** CPU HALTED IN EARLY EXCEPTION HANDLER ***\n"
+str_spin_halt:
+	.asciz "XZS_SPIN_HALT_CALLED=yes\n"
 str_bc_hdr:
 	.asciz "\n[BREADCRUMB] CP="
 str_bc_err:

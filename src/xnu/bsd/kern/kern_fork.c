@@ -630,6 +630,12 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 
 	retval[1] = 0;          /* flag parent return for user space */
 
+#if CONFIG_XZS_BRINGUP
+	{
+		extern void xzs_exec_mark(const char *tag);
+		xzs_exec_mark("E01 fork enter");
+	}
+#endif
 	if ((err = fork1(parent_proc, &child_thread, PROC_CREATE_FORK, NULL)) == 0) {
 		task_t child_task;
 		proc_t child_proc;
@@ -676,11 +682,24 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 
 		/* "Return" to the child */
 		task_clear_return_wait(get_threadtask(child_thread), TCRW_CLEAR_ALL_WAIT);
+#if CONFIG_XZS_BRINGUP
+		{
+			extern void xzs_exec_mark(const char *tag);
+			xzs_exec_mark("E02 fork parent");
+			xzs_exec_mark("E03 child resumed");
+		}
+#endif
 
 		/* drop the extra references we got during the creation */
 		task_deallocate(child_task);
 		thread_deallocate(child_thread);
 	}
+#if CONFIG_XZS_BRINGUP
+	else {
+		extern void xzs_exec_mark(const char *tag);
+		xzs_exec_mark("E01 fork failed");
+	}
+#endif
 
 	return err;
 }

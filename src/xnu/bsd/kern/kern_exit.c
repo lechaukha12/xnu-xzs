@@ -1479,6 +1479,12 @@ __attribute__((noreturn))
 void
 exit(proc_t p, struct exit_args *uap, int *retval)
 {
+#if CONFIG_XZS_BRINGUP
+	{
+		extern void xzs_exec_mark(const char *tag);
+		xzs_exec_mark("E30 exit entered");
+	}
+#endif
 	p->p_xhighbits = ((uint32_t)(uap->rval) & 0xFF000000) >> 24;
 	exit1(p, W_EXITCODE((uint32_t)uap->rval, 0), retval);
 
@@ -2893,6 +2899,12 @@ wait1continue(int result)
 int
 wait4(proc_t q, struct wait4_args *uap, int32_t *retval)
 {
+#if CONFIG_XZS_BRINGUP
+	{
+		extern void xzs_exec_mark(const char *tag);
+		xzs_exec_mark("E40 wait4 enter");
+	}
+#endif
 	__pthread_testcancel(1);
 	return wait4_nocancel(q, (struct wait4_nocancel_args *)uap, retval);
 }

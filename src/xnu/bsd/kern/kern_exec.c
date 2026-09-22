@@ -1317,6 +1317,17 @@ SYSCTL_PROC(_vm, OID_AUTO, shared_region_control,
  *		activators should not be given the opportunity to attempt
  *		to activate the image.
  */
+#if CONFIG_XZS_BRINGUP
+void
+xzs_exec_mark(const char *tag)
+{
+	extern void xzs_early_puts(const char *s);
+	xzs_early_puts("[XZS-PROC] ");
+	xzs_early_puts(tag);
+	xzs_early_puts("\n");
+}
+#endif
+
 static int
 exec_mach_imgact(struct image_params *imgp)
 {
@@ -1362,6 +1373,9 @@ exec_mach_imgact(struct image_params *imgp)
 		error = -1;
 		goto bad;
 	}
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark("E04 execve enter");
+#endif
 
 	if (imgp->ip_origcputype != 0) {
 		/* Fat header previously had an idea about this thin file */
@@ -1475,6 +1489,9 @@ grade:
 	 */
 	lret = load_machfile(imgp, mach_header, thread, &map, &load_result);
 	if (lret != LOAD_SUCCESS) {
+#if CONFIG_XZS_BRINGUP
+		xzs_exec_mark("E06 macho load failed");
+#endif
 		error = load_return_to_errno(lret);
 
 		KERNEL_DEBUG_CONSTANT(BSDDBG_CODE(DBG_BSD_PROC, BSD_PROC_EXITREASON_CREATE) | DBG_FUNC_NONE,
@@ -1496,6 +1513,9 @@ grade:
 
 		goto badtoolate;
 	}
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark("E06 macho loaded");
+#endif
 
 	assert(imgp->ip_free_map == NULL);
 
@@ -1846,9 +1866,12 @@ grade:
 		kern_return_t pkr = xzs_promote_launchd_text_exec(
 		    get_task_pmap(task), 0x100000000ULL, 0x4000ULL);
 		xzs_early_puts(pkr == KERN_SUCCESS ?
-		    "[XZS-EXEC] EL0 text promote ok\n" :
-		    "[XZS-EXEC] EL0 text promote failed\n");
+		    "[XZS-PROC] E09 UXN clear ok\n" :
+		    "[XZS-PROC] E09 UXN clear failed\n");
+	} else {
+		xzs_exec_mark("E09 entry outside hello page");
 	}
+	xzs_exec_mark("E12 EL0 entry prepared");
 #endif
 
 	/*

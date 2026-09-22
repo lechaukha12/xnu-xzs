@@ -623,14 +623,11 @@ console_write_unbuffered(char c)
 void
 console_write_char(char c)
 {
+	/*
+	 * TTY output already reaches USB through xzs_console_write().
+	 * A second enqueue here doubled single-character input echo.
+	 */
 	console_write(&c, 1);
-#if defined(__arm64__)
-	extern volatile uint32_t g_xzs_usb_console_ready;
-	extern void xzs_usb_console_putc(char c);
-	if (g_xzs_usb_console_ready) {
-		xzs_usb_console_putc(c);
-	}
-#endif
 }
 
 /**
