@@ -3917,6 +3917,8 @@ xzs_d6m4_monitor_and_report_r650(task_t t, thread_t th)
 		(void)ml_set_interrupts_enabled(TRUE);
 		xzs_early_puts("[XZS-D7T2] DIAG_TIMER_ARMED=yes\n");
 		for (;;) {
+			extern void xzs_usb_poll_events(void);
+			xzs_usb_poll_events();
 			if (g_xzs_usb_tty_bridge) {
 				if (g_xzs_diag_autorecover_armed) {
 					xzs_early_puts("[XZS-D7T2] DIAG_TIMER_DISARMED=yes\n");
