@@ -2270,28 +2270,6 @@ cleanup_rosetta_fp:
 	exec_prefault_data(p, imgp, &load_result);
 #if CONFIG_XZS_BRINGUP
 	xzs_exec_mark_usb("E11 prefault done");
-	if (load_result.entry_point >= 0x100000000ULL &&
-	    load_result.entry_point < 0x100004000ULL) {
-		extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
-		    vm_map_address_t, vm_map_size_t);
-		extern void pmap_protect_options(pmap_t, vm_map_offset_t,
-		    vm_map_offset_t, vm_prot_t, unsigned int, void *);
-		extern volatile uint32_t xzs_early_puts_suppress;
-		pmap_t hello_pmap = get_task_pmap(current_task());
-		kern_return_t pkr;
-		xzs_exec_mark_usb("E11 protect");
-		pmap_protect_options(hello_pmap,
-		    0x100000000ULL, 0x100004000ULL,
-		    VM_PROT_READ | VM_PROT_EXECUTE,
-		    PMAP_OPTIONS_PROTECT_IMMEDIATE, NULL);
-		xzs_early_puts_suppress = 1;
-		pkr = xzs_promote_launchd_text_exec(
-		    hello_pmap, 0x100000000ULL, 0x4000ULL);
-		xzs_early_puts_suppress = 0;
-		xzs_exec_mark_usb_u64("E11 kr", (uint64_t)pkr);
-		xzs_exec_mark_usb(pkr == KERN_SUCCESS ?
-		    "E11 UXN ok" : "E11 UXN failed");
-	}
 #endif
 
 	vm_map_switch_back(switch_ctx);
@@ -2409,6 +2387,9 @@ cleanup_rosetta_fp:
 	/*
 	 * mark as execed
 	 */
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb("E13 execed");
+#endif
 	OSBitOrAtomic(P_EXEC, &p->p_flag);
 	proc_resetregister(p);
 	if (p->p_pptr && (p->p_lflag & P_LPPWAIT)) {
