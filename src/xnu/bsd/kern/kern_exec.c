@@ -1966,45 +1966,12 @@ grade:
 	 * This port's user text is mapped UXN until the same promotion used
 	 * for launchd and /bin/sh. hello and args live in that one page.
 	 */
-	if (load_result.entry_point >= 0x100000000ULL &&
-	    load_result.entry_point < 0x100004000ULL) {
-		extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
-		    vm_map_address_t, vm_map_size_t);
-		extern void pmap_protect_options(pmap_t, vm_map_offset_t,
-		    vm_map_offset_t, vm_prot_t, unsigned int, void *);
-		extern volatile uint32_t xzs_early_puts_suppress;
-		pmap_t hello_pmap = get_task_pmap(task);
-		kern_return_t pkr;
-		kern_return_t fault_kr;
-		/*
-		 * The loaded text page has no leaf PTE until it is faulted
-		 * in. Promote returns KERN_FAILURE (5) on a missing L3.
-		 * Fault it, then set AF with the immediate protect used for
-		 * the shell page, then clear UXN.
-		 */
-		xzs_exec_mark_usb("E09 fault enter");
-		fault_kr = vm_fault(get_task_map(task),
-		    0x100000000ULL,
-		    VM_PROT_READ | VM_PROT_EXECUTE,
-		    FALSE, VM_KERN_MEMORY_NONE,
-		    THREAD_UNINT, NULL, 0);
-		xzs_exec_mark_usb_u64("E09 fault", (uint64_t)fault_kr);
-		xzs_exec_mark_usb("E09 protect");
-		pmap_protect_options(hello_pmap,
-		    0x100000000ULL, 0x100004000ULL,
-		    VM_PROT_READ | VM_PROT_EXECUTE,
-		    PMAP_OPTIONS_PROTECT_IMMEDIATE, NULL);
-		xzs_exec_mark_usb("E09 promote enter");
-		xzs_early_puts_suppress = 1;
-		pkr = xzs_promote_launchd_text_exec(
-		    hello_pmap, 0x100000000ULL, 0x4000ULL);
-		xzs_early_puts_suppress = 0;
-		xzs_exec_mark_usb_u64("E09 kr", (uint64_t)pkr);
-		xzs_exec_mark_usb(pkr == KERN_SUCCESS ?
-		    "E09 UXN clear ok" : "E09 UXN clear failed");
-	} else {
-		xzs_exec_mark_usb("E09 entry outside hello page");
-	}
+	/*
+	 * Do not vm_fault here. Exec still holds the image vnode, and
+	 * faulting the text page blocks until the 12s hello window ends.
+	 * exec_prefault_data() faults the entry later, then we promote.
+	 */
+	xzs_exec_mark_usb("E09 deferred");
 	xzs_exec_mark_usb("E12 EL0 entry prepared");
 #endif
 
@@ -2303,6 +2270,28 @@ cleanup_rosetta_fp:
 	exec_prefault_data(p, imgp, &load_result);
 #if CONFIG_XZS_BRINGUP
 	xzs_exec_mark_usb("E11 prefault done");
+	if (load_result.entry_point >= 0x100000000ULL &&
+	    load_result.entry_point < 0x100004000ULL) {
+		extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
+		    vm_map_address_t, vm_map_size_t);
+		extern void pmap_protect_options(pmap_t, vm_map_offset_t,
+		    vm_map_offset_t, vm_prot_t, unsigned int, void *);
+		extern volatile uint32_t xzs_early_puts_suppress;
+		pmap_t hello_pmap = get_task_pmap(current_task());
+		kern_return_t pkr;
+		xzs_exec_mark_usb("E11 protect");
+		pmap_protect_options(hello_pmap,
+		    0x100000000ULL, 0x100004000ULL,
+		    VM_PROT_READ | VM_PROT_EXECUTE,
+		    PMAP_OPTIONS_PROTECT_IMMEDIATE, NULL);
+		xzs_early_puts_suppress = 1;
+		pkr = xzs_promote_launchd_text_exec(
+		    hello_pmap, 0x100000000ULL, 0x4000ULL);
+		xzs_early_puts_suppress = 0;
+		xzs_exec_mark_usb_u64("E11 kr", (uint64_t)pkr);
+		xzs_exec_mark_usb(pkr == KERN_SUCCESS ?
+		    "E11 UXN ok" : "E11 UXN failed");
+	}
 #endif
 
 	vm_map_switch_back(switch_ctx);
