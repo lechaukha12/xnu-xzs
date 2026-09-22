@@ -1591,6 +1591,10 @@ IOUserClient::copyClientEntitlement( task_t task,
 		return NULL;
 	}
 
+	if (amfi == NULL || amfi->OSEntitlements.copyEntitlementAsOSObjectWithProc == NULL) {
+		return NULL;
+	}
+
 	kern_return_t ret = amfi->OSEntitlements.copyEntitlementAsOSObjectWithProc(
 		proc,
 		entitlement,

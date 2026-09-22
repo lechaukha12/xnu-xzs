@@ -1624,6 +1624,10 @@ IOTaskHasStringEntitlement(task_t task, const char *entitlement, const char *val
 		return false;
 	}
 
+	if (amfi == NULL || amfi->OSEntitlements.queryEntitlementStringWithProc == NULL) {
+		return false;
+	}
+
 	kern_return_t ret = amfi->OSEntitlements.queryEntitlementStringWithProc(
 		proc,
 		entitlement,
@@ -1659,6 +1663,10 @@ IOTaskHasEntitlement(task_t task, const char *entitlement)
 		return false;
 	}
 
+	if (amfi == NULL || amfi->OSEntitlements.queryEntitlementBooleanWithProc == NULL) {
+		return false;
+	}
+
 	kern_return_t ret = amfi->OSEntitlements.queryEntitlementBooleanWithProc(
 		proc,
 		entitlement);
@@ -1686,6 +1694,10 @@ IOTaskGetIntegerEntitlement(task_t task, const char *entitlement, uint64_t *valu
 	proc_t proc = (proc_t)get_bsdtask_info(task);
 
 	if (proc == NULL) {
+		return false;
+	}
+
+	if (amfi == NULL || amfi->OSEntitlements.copyEntitlementAsOSObjectWithProc == NULL) {
 		return false;
 	}
 
@@ -1739,6 +1751,10 @@ IOTaskGetEntitlement(task_t task, const char *entitlement)
 		return NULL;
 	}
 
+	if (amfi == NULL || amfi->OSEntitlements.copyEntitlementAsOSObjectWithProc == NULL) {
+		return NULL;
+	}
+
 	kern_return_t ret = amfi->OSEntitlements.copyEntitlementAsOSObjectWithProc(
 		proc,
 		entitlement,
@@ -1775,6 +1791,12 @@ IOTaskHasEntitlementAsBooleanOrObject(task_t task, const char *entitlement)
 	proc_t proc = (proc_t)get_bsdtask_info(task);
 
 	if (proc == NULL) {
+		return false;
+	}
+
+	if (amfi == NULL ||
+	    amfi->OSEntitlements.queryEntitlementBooleanWithProc == NULL ||
+	    amfi->OSEntitlements.copyEntitlementAsOSObjectWithProc == NULL) {
 		return false;
 	}
 

@@ -15393,6 +15393,22 @@ xzs_promote_launchd_text_exec(pmap_t pmap, vm_map_address_t va, vm_map_size_t si
 		return KERN_FAILURE;
 	}
 
+	{
+		extern void xzs_d6m4_put_hex64(uint64_t val);
+		pmap_paddr_t pa = pte_to_pa(readback);
+		uint64_t attr = readback & ARM_PTE_ATTRINDXMASK;
+
+		xzs_early_puts("[XZS-EXEC-MAP] VA=0x100000000 PA=");
+		xzs_d6m4_put_hex64((uint64_t)pa);
+		xzs_early_puts(" SIZE=0x4000 AP=RORO UXN=0 PXN=1 MEM=");
+		if (attr == ARM_PTE_ATTRINDX(CACHE_ATTRINDX_WRITEBACK)) {
+			xzs_early_puts("writeback\n");
+		} else {
+			xzs_d6m4_put_hex64(attr);
+			xzs_early_puts("\n");
+		}
+	}
+
 	xzs_early_puts("[XZS-EXEC-PROMOTE] SUCCESS: UXN cleared (1->0), AP=RORO, PXN=1, AF=1 preserved\n");
 	return KERN_SUCCESS;
 }

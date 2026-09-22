@@ -381,15 +381,15 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
     deadline = time.time() + timeout_sec
     dev = None
     last_seen = None
-    hard_streak = 0
-    while time.time() < deadline and hard_streak < MAX_CONSECUTIVE_HARD_USB_ERRORS:
+    enum_retries = 0
+    # Open failures while macOS still owns the device are not bulk errors.
+    # The three-error stop applies only after claim_interface succeeds.
+    while time.time() < deadline:
         dev = find_xzs_device(vid, pid)
         if dev is None:
             if last_seen is not None:
                 print("DEVICE_DISAPPEARED_AT=%.3f" % time.time())
                 print("DEVICE_DISAPPEARED_AFTER_ADDRESS=%s" % last_seen)
-                print_not_attempted("device_disappeared_before_claim")
-                return None
             time.sleep(0.25)
             continue
         last_seen = "%s:%s" % (getattr(dev, "bus", "?"), getattr(dev, "address", "?"))
@@ -398,8 +398,8 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
         if dev is None:
             print("DEVICE_DISAPPEARED_AT=%.3f" % time.time())
             print("DEVICE_DISAPPEARED_AFTER_ADDRESS=%s" % last_seen)
-            print_not_attempted("device_disappeared_before_claim")
-            return None
+            time.sleep(0.25)
+            continue
         try:
             rc, active = raw_get_configuration(dev)
         except usb.core.USBError as exc:
@@ -410,14 +410,12 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
         print("GET_CONFIGURATION_ERROR_NAME=%s" % (libusb_error_name(rc) if rc is not None else "none"))
         print("ACTIVE_CONFIGURATION=%s" % ("unset" if active is None else active))
         if rc != 0:
-            hard_streak += 1
-            print("USB_HARD_STREAK=%d" % hard_streak)
+            enum_retries += 1
+            print("ENUM_OPEN_RETRY=%d" % enum_retries)
+            print("ENUM_OPEN_RC=%s" % rc)
             release_device(dev)
-            if hard_streak >= MAX_CONSECUTIVE_HARD_USB_ERRORS:
-                break
             time.sleep(0.5)
             continue
-        hard_streak = 0
         if active == EXPECTED_CONFIGURATION:
             print("SET_CONFIGURATION_CALLED=no")
             print("SET_CONFIGURATION_RC=not_called")
@@ -428,8 +426,6 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
             print("SET_CONFIGURATION_RC=%d" % set_rc)
             print("SET_CONFIGURATION_ERROR_NAME=%s" % libusb_error_name(set_rc))
             print("SET_CONFIGURATION_REASON=active_was_%s" % active)
-            if set_rc != 0:
-                hard_streak += 1
             rc2, active2 = raw_get_configuration(dev)
             print("ACTIVE_CONFIGURATION_AFTER_SET=%s" % ("unset" if active2 is None else active2))
             print("GET_CONFIGURATION_AFTER_SET_RC=%s" % rc2)
@@ -468,7 +464,7 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
     print("USB_DEVICE_FOUND=%s" % ("yes" if last_seen else "no"))
     print("CLAIM_INTERFACE_ATTEMPTED=no")
     print("CLAIM_INTERFACE=NOT_ATTEMPTED")
-    print("USB_HARD_STREAK=%d" % hard_streak)
+    print("ENUM_OPEN_RETRIES=%d" % enum_retries)
     print_not_attempted("stopped_before_claim")
     return None
 
