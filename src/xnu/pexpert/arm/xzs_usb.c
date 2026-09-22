@@ -2214,17 +2214,9 @@ xzs_usb_t1z_service(void)
 	 * exists only so pstore can be collected; it is not triggered by Z4.
 	 */
 	{
-		extern volatile int xzs_d7t1_prompt_write_entered;
-		extern volatile int xzs_d7t1_read_returned;
-		uint32_t grace = 0;
 		for (uint32_t i = 0; i < 90000; i++) {
 			xzs_watchdog_pet();
 			delay(1000);
-			if (xzs_d7t1_prompt_write_entered && xzs_d7t1_read_returned) {
-				if (++grace > 3000) {
-					break;
-				}
-			}
 		}
 	}
 	return 0;
