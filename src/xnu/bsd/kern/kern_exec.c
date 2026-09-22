@@ -1318,6 +1318,8 @@ SYSCTL_PROC(_vm, OID_AUTO, shared_region_control,
  *		to activate the image.
  */
 #if CONFIG_XZS_BRINGUP
+volatile uint32_t xzs_early_puts_suppress;
+
 void
 xzs_exec_mark(const char *tag)
 {
@@ -1861,11 +1863,17 @@ grade:
 	}
 #endif /* XNU_TARGET_OS_OSX */
 
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb("E07 before map exec");
+#endif
 	error = vm_map_exec(map, task, load_result.is_64bit_addr,
 	    (void *)p->p_fd.fd_rdir, cputype, cpu_subtype, reslide,
 	    (imgp->ip_flags & IMGPF_DRIVER) != 0,
 	    rsr_version);
 
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb(error ? "E07 map exec failed" : "E07 map exec ok");
+#endif
 	if (error) {
 		KERNEL_DEBUG_CONSTANT(BSDDBG_CODE(DBG_BSD_PROC, BSD_PROC_EXITREASON_CREATE) | DBG_FUNC_NONE,
 		    proc_getpid(p), OS_REASON_EXEC, EXEC_EXIT_REASON_MAP_EXEC_FAILURE, 0, 0);
@@ -1932,7 +1940,14 @@ grade:
 	imgp->ip_free_map = old_map;
 	old_map = NULL;
 
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb("E08 before activate");
+#endif
 	lret = activate_exec_state(task, p, thread, &load_result);
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb(lret == KERN_SUCCESS ?
+	    "E08 activate ok" : "E08 activate failed");
+#endif
 	if (lret != KERN_SUCCESS) {
 		KERNEL_DEBUG_CONSTANT(BSDDBG_CODE(DBG_BSD_PROC, BSD_PROC_EXITREASON_CREATE) | DBG_FUNC_NONE,
 		    proc_getpid(p), OS_REASON_EXEC, EXEC_EXIT_REASON_ACTV_THREADSTATE, 0, 0);
@@ -1955,12 +1970,15 @@ grade:
 	    load_result.entry_point < 0x100004000ULL) {
 		extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
 		    vm_map_address_t, vm_map_size_t);
-		extern void xzs_early_puts(const char *s);
-		kern_return_t pkr = xzs_promote_launchd_text_exec(
+		extern volatile uint32_t xzs_early_puts_suppress;
+		kern_return_t pkr;
+		xzs_exec_mark_usb("E09 promote enter");
+		xzs_early_puts_suppress = 1;
+		pkr = xzs_promote_launchd_text_exec(
 		    get_task_pmap(task), 0x100000000ULL, 0x4000ULL);
-		xzs_early_puts(pkr == KERN_SUCCESS ?
-		    "[XZS-PROC] E09 UXN clear ok\n" :
-		    "[XZS-PROC] E09 UXN clear failed\n");
+		xzs_early_puts_suppress = 0;
+		xzs_exec_mark_usb(pkr == KERN_SUCCESS ?
+		    "E09 UXN clear ok" : "E09 UXN clear failed");
 	} else {
 		xzs_exec_mark_usb("E09 entry outside hello page");
 	}

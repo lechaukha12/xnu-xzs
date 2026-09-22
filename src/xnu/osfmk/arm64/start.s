@@ -1873,6 +1873,10 @@ LEXT(xzs_early_puts)
 	b.eq	.Lputs_early_nosp
 	stp		x29, x30, [sp, #-32]!
 	stp		x19, x20, [sp, #16]
+	adrp		x19, EXT(xzs_early_puts_suppress)@page
+	add		x19, x19, EXT(xzs_early_puts_suppress)@pageoff
+	ldr		w19, [x19]
+	cbnz		w19, .Lputs_suppressed
 	mrs		x20, DAIF
 	msr		DAIFSet, #0xf			// Mask interrupts during string output
 	mov		x19, x0
@@ -1883,6 +1887,7 @@ LEXT(xzs_early_puts)
 	b		1b
 2:
 	msr		DAIF, x20			// Restore interrupts
+.Lputs_suppressed:
 	ldp		x19, x20, [sp, #16]
 	ldp		x29, x30, [sp], #32
 	ret
