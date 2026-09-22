@@ -906,6 +906,22 @@ thread_dup(
 		return KERN_INVALID_ARGUMENT;
 	}
 
+#if CONFIG_XZS_BRINGUP
+	/*
+	 * One CPU. The target cannot be executing this instant, and
+	 * thread_stop() waits forever if the new fork thread is left
+	 * marked runnable. Copy the user state without stopping it.
+	 */
+	thread_mtx_lock(target);
+	if (target->active) {
+		result = machine_thread_dup(self, target, FALSE);
+	} else {
+		result = KERN_TERMINATED;
+	}
+	thread_mtx_unlock(target);
+	return result;
+#endif
+
 	thread_mtx_lock(target);
 
 	if (target->active) {

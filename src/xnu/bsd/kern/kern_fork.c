@@ -338,8 +338,8 @@ fork1(proc_t parent_proc, thread_t *child_threadp, int kind, coalition_t *coalit
 			thread_dup(child_thread);
 #if CONFIG_XZS_BRINGUP
 			{
-				extern void xzs_exec_mark(const char *tag);
-				xzs_exec_mark("E01b dup");
+				extern void xzs_exec_mark_usb(const char *tag);
+				xzs_exec_mark_usb("E01b dup");
 			}
 #endif
 		}
