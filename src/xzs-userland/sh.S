@@ -155,8 +155,9 @@ _d7m4_read_start:
 3:
     b       3b
 
-// D7-M4 acceptance ends at the branch above. The interactive shell is later
-// in the text segment so those ELR checks stay at the sealed addresses.
+// _d7m4_read_start is only the internal regression routine. The kernel
+// enters it after the M3 getpid proof. It is not the normal command loop.
+// The loop itself never looks for ABC.
 .p2align 4
 .globl _d7t1_live
 _d7t1_live:

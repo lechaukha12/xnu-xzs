@@ -1833,6 +1833,24 @@ grade:
 		goto badtoolate;
 	}
 
+#if CONFIG_XZS_BRINGUP
+	/*
+	 * This port's user text is mapped UXN until the same promotion used
+	 * for launchd and /bin/sh. hello and args live in that one page.
+	 */
+	if (load_result.entry_point >= 0x100000000ULL &&
+	    load_result.entry_point < 0x100004000ULL) {
+		extern kern_return_t xzs_promote_launchd_text_exec(pmap_t,
+		    vm_map_address_t, vm_map_size_t);
+		extern void xzs_early_puts(const char *s);
+		kern_return_t pkr = xzs_promote_launchd_text_exec(
+		    vm_map_pmap(get_task_map(task)), 0x100000000ULL, 0x4000ULL);
+		xzs_early_puts(pkr == KERN_SUCCESS ?
+		    "[XZS-EXEC] EL0 text promote ok\n" :
+		    "[XZS-EXEC] EL0 text promote failed\n");
+	}
+#endif
+
 	/*
 	 * deal with voucher on exec-calling thread.
 	 */

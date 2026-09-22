@@ -414,7 +414,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
         sh_crc = xzsfs_crc32(sh_crc, s_chunk_buf, n);
         bytes_read += n;
     }
-    if (bytes_read != 16736 || sh_crc != 0x060a7a33) {
+    if (bytes_read != 16736 || sh_crc != 0x92e0643a) {
         xzs_early_puts("D5-M3 FATAL: /bin/sh payload mismatch!\n");
         xzs_breadcrumb(CP_D5M3, 0xFB);
         vnode_put(devvp);
@@ -424,7 +424,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
     }
     /* 0x71: sh read pass */
     xzs_breadcrumb(CP_D5M3, 0x71);
-    xzs_early_puts("D5-M3: /bin/sh payload verified (size=16736, CRC32=0x060a7a33)\n");
+    xzs_early_puts("D5-M3: /bin/sh payload verified (size=16736, CRC32=0x92e0643a)\n");
 
     /* 11. Partial, Unaligned, Cross-Sector, and EOF Reads */
     /* First byte (off=0, len=1) */
@@ -511,7 +511,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
 
     /* 12. PRE-Mutation Whole-md0 CRC32 Verification */
     uint32_t pre_crc = xzsfs_compute_ramdisk_crc32(devvp, 137);
-    if (pre_crc != 0xbbbd5b92) {
+    if (pre_crc != 0x19c75a24) {
         xzs_early_puts("D5-M3 FATAL: Pre-mutation CRC mismatch!\n");
         xzs_breadcrumb(CP_D5M3, 0xFE);
         vnode_put(devvp);
@@ -521,7 +521,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
     }
     /* 0x73: PRE mutation whole-md0 CRC32 pass */
     xzs_breadcrumb(CP_D5M3, 0x73);
-    xzs_early_puts("D5-M3: PRE-mutation md0 CRC32 verified (0xbbbd5b92)\n");
+    xzs_early_puts("D5-M3: PRE-mutation md0 CRC32 verified (0x19c75a24)\n");
 
     /* 13. Read-Only Rejection Test */
     int rofs_res = xzsfs_rofs_err(NULL);
@@ -539,7 +539,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
 
     /* 14. POST-Mutation Whole-md0 CRC32 Verification */
     uint32_t post_crc = xzsfs_compute_ramdisk_crc32(devvp, 137);
-    if (post_crc != 0xbbbd5b92) {
+    if (post_crc != 0x19c75a24) {
         xzs_early_puts("D5-M3 FATAL: Post-mutation CRC mismatch!\n");
         xzs_breadcrumb(CP_D5M3, 0xFE);
         vnode_put(devvp);
@@ -559,7 +559,7 @@ xzsfs_d5m3_probe(dev_t root_dev)
     }
     /* 0x81: POST mutation whole-md0 CRC32 pass */
     xzs_breadcrumb(CP_D5M3, 0x81);
-    xzs_early_puts("D5-M3: POST-mutation md0 CRC32 verified (0xbbbd5b92)\n");
+    xzs_early_puts("D5-M3: POST-mutation md0 CRC32 verified (0x19c75a24)\n");
 
     /* 15. D5-M3 Complete Telemetry Banner */
     /* 0x90: D5-M3 complete */
@@ -587,8 +587,8 @@ xzsfs_d5m3_probe(dev_t root_dev)
     xzs_early_puts("XZSFS_UNALIGNED_READ_MATCH=yes\n");
     xzs_early_puts("XZSFS_CROSS_SECTOR_READ_MATCH=yes\n");
     xzs_early_puts("XZSFS_EOF_SEMANTICS_PASS=yes\n");
-    xzs_early_puts("PRE_MUTATION_MD0_CRC32=0xbbbd5b92\n");
-    xzs_early_puts("POST_MUTATION_MD0_CRC32=0xbbbd5b92\n");
+    xzs_early_puts("PRE_MUTATION_MD0_CRC32=0x19c75a24\n");
+    xzs_early_puts("POST_MUTATION_MD0_CRC32=0x19c75a24\n");
     xzs_early_puts("RAMDISK_CONTENT_UNCHANGED=yes\n");
     xzs_early_puts("XZSFS_REAL_VNODE_CREATED=no\n");
     xzs_early_puts("XZSFS_VNOP_DISPATCH_VERIFIED=no\n");

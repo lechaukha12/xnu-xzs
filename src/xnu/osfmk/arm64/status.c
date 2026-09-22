@@ -3588,7 +3588,7 @@ xzs_d6m4_monitor_and_report_r650(task_t t, thread_t th)
 		xzs_early_puts("\n=======================================================\n");
 		xzs_early_puts("=== D7-M4 INTERNAL ACCEPTANCE TELEMETRY BEGIN ===\n");
 		xzs_early_puts("D7M4_INPUT_SOURCE=INTERNAL_LOOPBACK\n");
-		xzs_early_puts("D7M4_SHELL_IMAGE_SHA256=fd9e0db28b88834c70c9e413a7c3ecf1e1f07e5aac167de4a05373e18ce92988\n");
+		xzs_early_puts("D7M4_SHELL_IMAGE_SHA256=a0e041d373b3e59d8f5c51d85eaa48a494ef81bfe8d06228b9ec85d6b9e8da4c\n");
 		xzs_early_puts("D7M4_SHELL_READ_ENTRY=0x0000000100000910\n");
 		xzs_early_puts("UARTDM_INTERNAL_LOOPBACK_VERIFIED=yes\n");
 		xzs_early_puts("UARTDM_RX_IRQ=146\n");
@@ -3901,15 +3901,25 @@ xzs_d6m4_monitor_and_report_r650(task_t t, thread_t th)
 		xzs_early_puts("=== D7-T1 T1-Y CONTROL ENUMERATION TELEMETRY END ===\n");
 		xzs_early_puts("=======================================================\n\n");
 
-		/* Z1–Z4 run after the T1-Y report.  Halt on completion or the 40s safety window. */
+		/* USB and the shell stay up. Report and warm reset only on reboot. */
 		extern int xzs_usb_t1z_service(void);
+		extern volatile uint32_t g_xzs_diag_live_window_ms;
 		extern void xzs_usb_t1z_report(void);
 		(void)xzs_usb_t1z_service();
-		xzs_usb_t1z_report();
-
-		/* Cleanly flush ramoops to DRAM and warm-reset directly back to Fastboot */
-		extern void xzs_spin_halt(void);
-		xzs_spin_halt();
+		extern void ml_set_interrupts_enabled(boolean_t enable);
+		ml_set_interrupts_enabled(TRUE);
+		if (g_xzs_diag_live_window_ms != 0) {
+			for (uint32_t waited = 0; waited < g_xzs_diag_live_window_ms; waited++) {
+				xzs_watchdog_pet();
+				delay(1000);
+			}
+			xzs_usb_t1z_report();
+			xzs_spin_halt();
+		}
+		for (;;) {
+			xzs_watchdog_pet();
+			delay(1000);
+		}
 	} else if (xzs_d6m4_r650_telemetry.unexpected_exception) {
 		xzs_early_puts("\n[XZS-D6M4] UNEXPECTED EXCEPTION ON CPU 1\n");
 		xzs_early_puts("ESR_EL1="); xzs_d6m4_put_hex64(xzs_d6m4_r650_telemetry.esr); xzs_early_puts("\n");

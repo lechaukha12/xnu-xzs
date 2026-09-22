@@ -8,6 +8,7 @@
 #define SYS_CLOSE 6
 #define SYS_WAIT4 7
 #define SYS_CHDIR 12
+#define SYS_REBOOT 55
 #define SYS_EXECVE 59
 #define SYS_GETDIRENTRIES 196
 
@@ -377,6 +378,8 @@ xzs_d7t2_shell(void)
 			cmd_cat(argc, argv);
 		} else if (seq(argv[0], "exit")) {
 			(void)xzs_svc(SYS_EXIT, 0, 0, 0, 0);
+		} else if (seq(argv[0], "reboot")) {
+			(void)xzs_svc(SYS_REBOOT, 0, 0, 0, 0);
 		} else {
 			run_external(argc, argv);
 		}

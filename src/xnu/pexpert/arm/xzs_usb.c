@@ -110,6 +110,8 @@ volatile uint32_t g_xzs_usb_configured = 0;
 volatile uint32_t g_xzs_usb_console_ready = 0;
 volatile uint32_t g_xzs_usb_tx_drops = 0;
 volatile uint32_t g_xzs_usb_t1z_activation_pending = 0;
+/* Nonzero only for a diagnostic build. Normal runtime never halts on this. */
+volatile uint32_t g_xzs_diag_live_window_ms = 0;
 volatile uint32_t g_xzs_usb_t1z_worker_entered = 0;
 volatile uint32_t g_xzs_usb_t1z_config_in_hard_irq = 0;
 volatile uint32_t g_xzs_usb_t1z_failed = 0;
@@ -2188,36 +2190,12 @@ xzs_t1y_connect(void)
 int
 xzs_usb_t1z_service(void)
 {
-	if (!g_xzs_usb_t1z_activation_pending) {
-		return -1;
-	}
+	/*
+	 * Kick the event thread and return. Enumeration may finish later.
+	 * g_xzs_diag_live_window_ms == 0, so this function does not halt.
+	 */
 	if (s_t1y_event_call != NULL) {
 		(void)thread_call_enter(s_t1y_event_call);
-	}
-	/*
-	 * Stay up until Z4 finishes or the safety window expires.
-	 * A fixed +25s halt is not used: completion ends the wait early,
-	 * and a missed host never runs forever.
-	 */
-	for (uint32_t i = 0; i < 40000; i++) {
-		if (g_xzs_usb_t1z_pipeline_done || g_xzs_usb_t1z_failed) {
-			break;
-		}
-		xzs_watchdog_pet();
-		delay(1000);
-	}
-	if (!g_xzs_usb_t1z_pipeline_done || g_xzs_usb_t1z_failed) {
-		return -1;
-	}
-	/*
-	 * Z4 is not a stop. Stay up for the live shell window. A later halt
-	 * exists only so pstore can be collected; it is not triggered by Z4.
-	 */
-	{
-		for (uint32_t i = 0; i < 90000; i++) {
-			xzs_watchdog_pet();
-			delay(1000);
-		}
 	}
 	return 0;
 }
@@ -2283,7 +2261,7 @@ xzs_usb_t1z_report(void)
 	xzs_early_puts("TX_RING_CONCURRENCY_MODEL=MPSC_CONSOLE_WRITERS_ONE_USB_WORKER\n");
 	xzs_early_puts("TX_RING_ACTIVE=");
 	xzs_early_puts(g_xzs_usb_tty_bridge ? "yes\n" : "no\n");
-	xzs_early_puts("T1Z_RESET_POLICY=live_window_then_pstore_halt\n");
+	xzs_early_puts("T1Z_RESET_POLICY=reboot_syscall_warm_reset\n");
 	xzs_early_puts("T1Z_MAX_STAGE=6\n");
 	xzs_early_puts("TTY_BRIDGE_ACTIVE=");
 	xzs_early_puts(g_xzs_usb_tty_bridge ? "yes\n" : "no\n");
