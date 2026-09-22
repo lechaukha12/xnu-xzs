@@ -262,15 +262,12 @@ def release_device(dev):
 
 
 def claim_device(dev):
-    """Claim interface 0. One attempt. Hard errors are counted by the caller."""
+    """Claim interface 0. macOS libusb rejects driver-detach queries; ignore those."""
     try:
         if dev.is_kernel_driver_active(0):
             dev.detach_kernel_driver(0)
-    except usb.core.USBError as exc:
-        if is_hard_usb(exc):
-            note_hard()
-            print(f"USB_DETACH=FAIL ({exc})")
-            return False
+    except Exception:
+        pass
     configured = False
     try:
         dev.get_active_configuration()
@@ -307,23 +304,22 @@ def claim_device(dev):
 def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
     """
     Wait until the gadget accepts a configuration claim.
-    Hard errors are spaced and stop at three in a row. Absence of the
-    device resets that streak and is not a transfer error.
+
+    Discovery itself is not a bulk transfer. A not-ready control pipe
+    during enumeration is retried until the timeout. Three-error stop
+    applies only after the interface has been claimed.
     """
     deadline = time.time() + timeout_sec
-    streak = 0
-    while time.time() < deadline and streak < MAX_CONSECUTIVE_HARD_USB_ERRORS:
+    while time.time() < deadline:
         dev = find_xzs_device(vid, pid)
         if dev is None:
-            streak = 0
             time.sleep(0.25)
             continue
-        time.sleep(0.8)
+        # Let macOS finish its own enumeration before we issue setup.
+        time.sleep(2.0)
         dev = find_xzs_device(vid, pid)
         if dev is None:
-            streak = 0
             continue
-        before = usb_hard_errors
         if claim_device(dev):
             print("USB_DEVICE_FOUND=yes")
             print("VID_PID=1209:000A")
@@ -331,11 +327,9 @@ def open_stable_device(timeout_sec=120, vid=TARGET_VID, pid=TARGET_PID):
             print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
             return dev
         release_device(dev)
-        if usb_hard_errors > before:
-            streak += 1
-        print(f"USB_CLAIM_STREAK={streak}")
+        print("USB_CLAIM_RETRY=yes")
         time.sleep(1.0)
-    print("USB_DEVICE_FOUND=no" if streak < MAX_CONSECUTIVE_HARD_USB_ERRORS else "USB_DEVICE_FOUND=wedged")
+    print("USB_DEVICE_FOUND=no")
     print(f"USB_HARD_ERROR_COUNT={usb_hard_errors}")
     print(f"USB_TIMEOUT_COUNT={usb_timeouts}")
     print("USB_DATA_PLANE=stopped")
