@@ -1467,7 +1467,7 @@ exec_mach_imgact(struct image_params *imgp)
 		goto bad;
 	}
 #if CONFIG_XZS_BRINGUP
-	xzs_exec_mark("E04 execve enter");
+	xzs_exec_mark_usb("E04 execve enter");
 #endif
 
 	if (imgp->ip_origcputype != 0) {
@@ -1583,7 +1583,7 @@ grade:
 	lret = load_machfile(imgp, mach_header, thread, &map, &load_result);
 	if (lret != LOAD_SUCCESS) {
 #if CONFIG_XZS_BRINGUP
-		xzs_exec_mark("E06 macho load failed");
+		xzs_exec_mark_usb("E06 macho load failed");
 #endif
 		error = load_return_to_errno(lret);
 
@@ -1607,7 +1607,7 @@ grade:
 		goto badtoolate;
 	}
 #if CONFIG_XZS_BRINGUP
-	xzs_exec_mark("E06 macho loaded");
+	xzs_exec_mark_usb("E06 macho loaded");
 #endif
 
 	assert(imgp->ip_free_map == NULL);
@@ -1962,9 +1962,9 @@ grade:
 		    "[XZS-PROC] E09 UXN clear ok\n" :
 		    "[XZS-PROC] E09 UXN clear failed\n");
 	} else {
-		xzs_exec_mark("E09 entry outside hello page");
+		xzs_exec_mark_usb("E09 entry outside hello page");
 	}
-	xzs_exec_mark("E12 EL0 entry prepared");
+	xzs_exec_mark_usb("E12 EL0 entry prepared");
 #endif
 
 	/*
@@ -5459,7 +5459,9 @@ execve(proc_t p, struct execve_args *uap, int32_t *retval)
 	int err;
 
 #if CONFIG_XZS_BRINGUP
-	xzs_exec_mark("E04b execve syscall");
+	/* USB only. early_puts masks IRQs for the whole string, and this
+	 * thread is the fork child, not the boot CPU that has been calling it. */
+	xzs_exec_mark_usb("E04b execve syscall");
 #endif
 
 	memoryshot(DBG_VM_EXECVE, DBG_FUNC_NONE);
@@ -5513,6 +5515,9 @@ __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval __unused)
 	task_t new_task = NULL;
 	boolean_t should_release_proc_ref = FALSE;
 	boolean_t exec_done = FALSE;
+#if CONFIG_XZS_BRINGUP
+	xzs_exec_mark_usb("E04c mac execve");
+#endif
 	void *inherit = NULL;
 	struct {
 		struct image_params imgp;
