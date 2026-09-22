@@ -103,6 +103,13 @@ unix_syscall(
 	code = arm_get_syscall_number(state);
 
 #if CONFIG_XZS_BRINGUP
+	if (code == 59) {
+		extern void xzs_exec_mark_usb(const char *tag);
+		xzs_exec_mark_usb("E04a dispatch");
+	}
+#endif
+
+#if CONFIG_XZS_BRINGUP
 	extern volatile boolean_t xzs_d6m4_probe_armed;
 	extern thread_t xzs_d6m4_target_thread;
 	extern struct xzs_d6m4_r650_telemetry xzs_d6m4_r650_telemetry;
@@ -138,6 +145,12 @@ unix_syscall(
 		if (arm_get_syscall_args(uthread, state, callp) != 0) {
 			/* Too many arguments, or something failed */
 			unix_syscall_kprintf("arm_get_syscall_args failed.\n");
+#if CONFIG_XZS_BRINGUP
+			if (code == 59) {
+				extern void xzs_exec_mark_usb(const char *tag);
+				xzs_exec_mark_usb("E04a args fail");
+			}
+#endif
 			callp = &sysent[SYS_invalid];
 		}
 	}
@@ -200,6 +213,13 @@ unix_syscall(
 	if (xzs_d6m5_target_write && syscode == SYS_write) {
 		xzs_d6m4_r650_telemetry.handler_entered = 1;
 		__asm__ volatile("dmb ish" ::: "memory");
+	}
+#endif
+#if CONFIG_XZS_BRINGUP
+	if (code == 59) {
+		extern void xzs_exec_mark_usb(const char *tag);
+		xzs_exec_mark_usb(callp->sy_call == (sy_call_t *)execve ?
+		    "E04a call execve" : "E04a call other");
 	}
 #endif
 	error = (*(callp->sy_call))(proc, &uthread->uu_arg[0], &(uthread->uu_rval[0]));

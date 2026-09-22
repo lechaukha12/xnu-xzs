@@ -2733,6 +2733,13 @@ handle_svc(arm_saved_state_t *state)
 		assert(p);
 
 #if CONFIG_XZS_BRINGUP
+		if (trap_no == 59) {
+			extern void xzs_exec_mark_usb(const char *tag);
+			xzs_exec_mark_usb("E03f handle svc");
+		}
+#endif
+
+#if CONFIG_XZS_BRINGUP
 		extern volatile boolean_t xzs_d6m4_probe_armed;
 		extern thread_t xzs_d6m4_target_thread;
 		extern struct xzs_d6m4_r650_telemetry xzs_d6m4_r650_telemetry;
