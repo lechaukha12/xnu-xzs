@@ -2543,7 +2543,12 @@ thread_set_child(thread_t child,
 
 	child_state = get_user_regs(child);
 
-	set_user_saved_state_reg(child_state, 0, pid);
+	/*
+	 * Userspace fork() is 0 in the child. x1 stays 1 so a Darwin libc
+	 * wrapper still takes the child path. The raw shell only looks at x0.
+	 */
+	(void)pid;
+	set_user_saved_state_reg(child_state, 0, 0);
 	set_user_saved_state_reg(child_state, 1, 1ULL);
 }
 

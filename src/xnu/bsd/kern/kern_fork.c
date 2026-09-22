@@ -686,7 +686,9 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 		{
 			extern void xzs_exec_mark(const char *tag);
 			xzs_exec_mark("E02 fork parent");
+			xzs_exec_mark("PARENT_AFTER_FORK");
 			xzs_exec_mark("E03 child resumed");
+			xzs_exec_mark("CHILD_AFTER_FORK");
 		}
 #endif
 

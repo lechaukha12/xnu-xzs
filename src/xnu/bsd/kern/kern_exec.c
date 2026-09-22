@@ -1322,9 +1322,25 @@ void
 xzs_exec_mark(const char *tag)
 {
 	extern void xzs_early_puts(const char *s);
-	xzs_early_puts("[XZS-PROC] ");
-	xzs_early_puts(tag);
-	xzs_early_puts("\n");
+	extern void xzs_usb_console_write(const unsigned char *buf, int len);
+	extern volatile uint32_t g_xzs_usb_console_ready;
+	char line[80];
+	int i = 0;
+	const char *p = "[XZS-PROC] ";
+
+	while (*p != 0 && i < 70) {
+		line[i++] = *p++;
+	}
+	p = tag;
+	while (p != NULL && *p != 0 && i < 76) {
+		line[i++] = *p++;
+	}
+	line[i++] = '\n';
+	line[i] = 0;
+	xzs_early_puts(line);
+	if (g_xzs_usb_console_ready) {
+		xzs_usb_console_write((const unsigned char *)line, i);
+	}
 }
 #endif
 
