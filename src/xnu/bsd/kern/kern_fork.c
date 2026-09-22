@@ -133,7 +133,9 @@ static void (*dtrace_proc_waitfor_hook)(proc_t) = NULL;
 #include <security/mac_mach_internal.h>
 #endif
 
+#include <vm/vm_fault.h>
 #include <vm/vm_map_xnu.h>
+#include <vm/pmap.h>
 #include <vm/vm_protos.h>
 #include <vm/vm_shared_region.h>
 #include <vm/vm_pageout_xnu.h>
@@ -692,19 +694,35 @@ fork(proc_t parent_proc, __unused struct fork_args *uap, int32_t *retval)
 			uint64_t child_x0;
 			uint64_t child_cpsr;
 			int cont_repaired = 0;
+			kern_return_t fault_kr;
 			kern_return_t promote_kr;
+			pmap_t child_pmap;
 
 			/*
 			 * The child is still on the fork return-wait. Re-assert the
-			 * raw shell ABI (x0 = 0, x1 = 1) and make the one shell
-			 * text page executable in the copied pmap before it can run.
-			 * hello is loaded later by execve; this page is the fork
-			 * return site in /bin/sh.
+			 * raw shell ABI (x0 = 0, x1 = 1). Fork copies the vm map but
+			 * does not copy the shell text PTE, so the child pmap has no
+			 * leaf at 0x100000000 until that page is faulted in. hello is
+			 * loaded later; this page is the fork return site in /bin/sh.
 			 */
 			xzs_fork_child_prepare(child_thread, &child_pc, &child_x0,
 			    &child_cpsr, &cont_repaired);
+			xzs_exec_mark("E03 text fault enter");
+			fault_kr = vm_fault(get_task_map(child_task),
+			    0x100000000ULL,
+			    VM_PROT_READ | VM_PROT_EXECUTE,
+			    FALSE, VM_KERN_MEMORY_NONE,
+			    THREAD_UNINT, NULL, 0);
+			xzs_exec_mark_u64("E03 text fault", (uint64_t)fault_kr);
+			child_pmap = get_task_pmap(child_task);
+			if (fault_kr == KERN_SUCCESS) {
+				pmap_protect_options(child_pmap,
+				    0x100000000ULL, 0x100004000ULL,
+				    VM_PROT_READ | VM_PROT_EXECUTE,
+				    PMAP_OPTIONS_PROTECT_IMMEDIATE, NULL);
+			}
 			promote_kr = xzs_promote_launchd_text_exec(
-			    get_task_pmap(child_task), 0x100000000ULL, 0x4000ULL);
+			    child_pmap, 0x100000000ULL, 0x4000ULL);
 			xzs_exec_mark_u64("E03 pc", child_pc);
 			xzs_exec_mark_u64("E03 x0", child_x0);
 			xzs_exec_mark_u64("E03 cpsr", child_cpsr);

@@ -2273,6 +2273,21 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
 			thread_reset_pcs_done_faulting(thread);
 		}
 		if (result == KERN_SUCCESS || result == KERN_ABORTED) {
+#if CONFIG_XZS_BRINGUP
+			/*
+			 * A new fork pmap faults the shell text page in with
+			 * UXN still set. Clearing that one page lets the
+			 * restarted instruction fetch succeed.
+			 */
+			if ((fault_type & VM_PROT_EXECUTE) != 0 &&
+			    fault_addr >= 0x100000000ULL &&
+			    fault_addr < 0x100004000ULL) {
+				extern kern_return_t xzs_promote_launchd_text_exec(
+					pmap_t, vm_map_address_t, vm_map_size_t);
+				(void)xzs_promote_launchd_text_exec(map->pmap,
+				    0x100000000ULL, 0x4000ULL);
+			}
+#endif
 			return;
 		}
 
