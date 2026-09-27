@@ -828,6 +828,10 @@ xzs_diag_dispatch(uint64_t which, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 		break;
 	case 14:
 		xzs_d8m2_ahb_debug();
+		/* C1 uses this verb. /bin/sh CRC stays pinned. Write only after M8_1. */
+		if (g_m8_fb_initialized) {
+			xzs_d8m8_c1_rate();
+		}
 		break;
 	case 15:
 		xzs_d8m2_critical_status();

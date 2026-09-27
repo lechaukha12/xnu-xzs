@@ -1252,6 +1252,189 @@ xzs_d8m8_t1_clock_read(void)
 	}
 }
 
+/*
+ * C1: one MDP RCG update to CFG 0x00000506 (GPLL0, hid 6, 171428571 Hz).
+ * Reached from clocks mdss-ahb-debug only after m8-fb-init. A new shell
+ * verb would change the pinned /bin/sh CRC. No GPLL0 write, no second rate.
+ */
+static int g_c1_attempted = 0;
+
+static void
+xzs_d8m8_c1_hex(const char *label, uint32_t value)
+{
+	xzs_diag_emit("[C1] ");
+	xzs_diag_emit(label);
+	xzs_diag_emit("=0x");
+	xzs_d8p1_hex32(value);
+	xzs_diag_emit("\n");
+}
+
+static void
+xzs_d8m8_c1_shutdown(void)
+{
+	int shutdown_rc;
+
+	if (!g_m8_panel_ready) {
+		xzs_diag_emit("[C1] SAFE_SHUTDOWN=SKIP\n");
+		return;
+	}
+	shutdown_rc = xzs_d8m6_panel_shutdown();
+	xzs_diag_emit("[C1] SAFE_SHUTDOWN=");
+	xzs_diag_emit(shutdown_rc == 0 ? "PASS\n" : "FAIL\n");
+}
+
+static void
+xzs_d8m8_c1_rate(void)
+{
+	uint32_t mode;
+	uint32_t vote;
+	uint32_t cmd_pre;
+	uint32_t cfg_pre;
+	uint32_t cbcr_pre;
+	uint32_t cfg_old;
+	uint32_t cfg_new;
+	uint32_t cmd_old;
+	uint32_t cmd_wrote;
+	uint32_t cmd_post;
+	uint32_t cfg_post;
+	uint32_t cbcr_post;
+	uint32_t polls;
+	int lock;
+	int active;
+	int fsm;
+	int vote0;
+	int gate;
+	int updated;
+	int pass;
+
+	xzs_watchdog_pet();
+	xzs_diag_emit("\n[C1] C1_BEGIN\n");
+	xzs_diag_emit("[C1] TRANSPORT=clocks mdss-ahb-debug\n");
+	if (!g_m8_fb_initialized) {
+		xzs_diag_emit("[C1] M8_1_PASS=NO\n");
+		xzs_diag_emit("[C1] C1_READY_FOR_FRAME=NO\n");
+		xzs_diag_emit("[C1] C1_END\n");
+		return;
+	}
+	xzs_diag_emit("[C1] M8_1_PASS=YES\n");
+	if (g_c1_attempted) {
+		xzs_diag_emit("[C1] C1_ALREADY_DONE=YES\n");
+		xzs_diag_emit("[C1] C1_READY_FOR_FRAME=NO\n");
+		xzs_diag_emit("[C1] C1_END\n");
+		return;
+	}
+	g_c1_attempted = 1;
+
+	mode = xzs_phys_read32(XZS_GCC_BASE + XZS_GCC_GPLL0_MODE);
+	vote = xzs_phys_read32(XZS_GCC_BASE + XZS_GCC_GPLL0_VOTE);
+	lock = (mode & 0x80000000u) != 0;
+	active = (mode & 0x40000000u) != 0;
+	fsm = (mode & 0x00100000u) != 0;
+	vote0 = (vote & 0x00000001u) != 0;
+	gate = lock && active && fsm && vote0;
+	xzs_d8m8_c1_hex("GPLL0_MODE", mode);
+	xzs_diag_emit("[C1] GPLL0_LOCK=");
+	xzs_diag_emit(lock ? "1\n" : "0\n");
+	xzs_diag_emit("[C1] GPLL0_ACTIVE=");
+	xzs_diag_emit(active ? "1\n" : "0\n");
+	xzs_diag_emit("[C1] GPLL0_FSM=");
+	xzs_diag_emit(fsm ? "1\n" : "0\n");
+	xzs_d8m8_c1_hex("GPLL0_VOTE", vote);
+	xzs_diag_emit("[C1] GPLL0_VOTE_BIT0=");
+	xzs_diag_emit(vote0 ? "1\n" : "0\n");
+	xzs_diag_emit("[C1] GPLL0_GATE=");
+	xzs_diag_emit(gate ? "PASS\n" : "FAIL\n");
+
+	cmd_pre = xzs_mmcc_read32(0x2040u);
+	cfg_pre = xzs_mmcc_read32(0x2044u);
+	cbcr_pre = xzs_mmcc_read32(XZS_MMCC_MDSS_MDP);
+	xzs_d8m8_c1_hex("CMD_PRE", cmd_pre);
+	xzs_d8m8_c1_hex("CFG_PRE", cfg_pre);
+	xzs_d8m8_c1_hex("MDP_CBCR_PRE", cbcr_pre);
+
+	if (!gate) {
+		xzs_diag_emit("[C1] C1_GPLL0_GATE=FAIL\n");
+		xzs_diag_emit("[C1] RCG_UPDATE_COMPLETED=NO\n");
+		xzs_diag_emit("[C1] TARGET_RATE_CONFIRMED=NO\n");
+		xzs_diag_emit("[C1] C1_READY_FOR_FRAME=NO\n");
+		xzs_d8m8_c1_shutdown();
+		xzs_diag_emit("[C1] C1_END\n");
+		return;
+	}
+
+	cfg_old = xzs_mmcc_read32(0x2044u);
+	cfg_new = (cfg_old & ~0x0010371Fu) | 0x00000506u;
+	xzs_d8m8_c1_hex("CFG_OLD", cfg_old);
+	xzs_d8m8_c1_hex("CFG_NEW", cfg_new);
+	xzs_mmcc_write32(0x2044u, cfg_new);
+
+	cmd_old = xzs_mmcc_read32(0x2040u);
+	cmd_wrote = (cmd_old & ~0x00000001u) | 0x00000001u;
+	xzs_d8m8_c1_hex("CMD_BEFORE_UPDATE", cmd_old);
+	xzs_mmcc_write32(0x2040u, cmd_wrote);
+	xzs_d8m8_c1_hex("CMD_UPDATE_WROTE", cmd_wrote);
+
+	updated = 0;
+	for (polls = 0; polls < 500u; polls++) {
+		uint32_t cmd_now = xzs_mmcc_read32(0x2040u);
+
+		if ((cmd_now & 0x00000001u) == 0u) {
+			updated = 1;
+			break;
+		}
+		delay(1);
+	}
+	xzs_diag_emit("[C1] RCG_POLL_ITERS=");
+	xzs_d8m8_dec(updated ? ((uint64_t)polls + 1ull) : 500ull);
+	xzs_diag_emit("\n[C1] RCG_UPDATE_COMPLETED=");
+	xzs_diag_emit(updated ? "YES\n" : "NO\n");
+	if (!updated) {
+		xzs_diag_emit("[C1] C1_RCG_UPDATE_TIMEOUT\n");
+	}
+
+	cmd_post = xzs_mmcc_read32(0x2040u);
+	cfg_post = xzs_mmcc_read32(0x2044u);
+	cbcr_post = xzs_mmcc_read32(XZS_MMCC_MDSS_MDP);
+	xzs_d8m8_c1_hex("CMD_POST", cmd_post);
+	xzs_d8m8_c1_hex("CFG_POST", cfg_post);
+	xzs_d8m8_c1_hex("CFG_POST_MASKED", cfg_post & 0x0010371Fu);
+	xzs_d8m8_c1_hex("MDP_CBCR_POST", cbcr_post);
+	xzs_diag_emit("[C1] CMD_POST_UPDATE_BIT=");
+	xzs_diag_emit((cmd_post & 0x00000001u) ? "1\n" : "0\n");
+	xzs_diag_emit("[C1] CMD_POST_ROOT_OFF=");
+	xzs_diag_emit((cmd_post & 0x80000000u) ? "1\n" : "0\n");
+	xzs_diag_emit("[C1] MDP_BRANCH_POST=");
+	if ((cbcr_post & 1u) != 0u && (cbcr_post & 0x80000000u) == 0u) {
+		xzs_diag_emit("ACTIVE\n");
+	} else if ((cbcr_post & 1u) == 0u && (cbcr_post & 0x80000000u) != 0u) {
+		xzs_diag_emit("INACTIVE\n");
+	} else {
+		xzs_diag_emit("INCONSISTENT\n");
+	}
+
+	pass = updated &&
+	    (cmd_post & 0x00000001u) == 0u &&
+	    (cmd_post & 0x80000000u) == 0u &&
+	    (cfg_post & 0x0010371Fu) == 0x00000506u &&
+	    (cbcr_post & 1u) != 0u &&
+	    (cbcr_post & 0x80000000u) == 0u;
+	xzs_diag_emit("[C1] TARGET_RATE_CONFIRMED=");
+	xzs_diag_emit(((cfg_post & 0x0010371Fu) == 0x00000506u) ? "YES\n" : "NO\n");
+	if (!pass) {
+		if (updated) {
+			xzs_diag_emit("[C1] C1_CLOCK_READBACK_FAIL\n");
+		}
+		xzs_diag_emit("[C1] C1_READY_FOR_FRAME=NO\n");
+		xzs_d8m8_c1_shutdown();
+		xzs_diag_emit("[C1] C1_END\n");
+		return;
+	}
+
+	xzs_diag_emit("[C1] C1_READY_FOR_FRAME=YES\n");
+	xzs_diag_emit("[C1] SAFE_SHUTDOWN=DEFERRED\n");
+	xzs_diag_emit("[C1] C1_END\n");
+}
+
 static inline void
 xzs_m8_clean_poc(uintptr_t va, size_t size)
 {
