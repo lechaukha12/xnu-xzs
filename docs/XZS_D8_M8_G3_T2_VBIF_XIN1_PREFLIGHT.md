@@ -1,23 +1,28 @@
 # D8-M8 G3 / T2 preflight — VBIF XIN1
 
-Source audit of the pinned Sony MDSS VBIF path. No XNU boot. No VBIF
-write. TWRP was not entered.
+Source audit plus one read-only TWRP RAM boot. No XNU boot. No VBIF
+write. The phone was returned to fastboot.
 
 ```text
-G3_CLASS=G3-D TWRP_CAPTURE_BLOCKED_XNU_CONSOLE
-TWRP_VBIF_READ_METHOD=UNAVAILABLE
+G3_CLASS=G3_RUNTIME_DIFFERS_FROM_SOURCE
+TWRP_VBIF_READ_METHOD=DEBUGFS
 RGB0_XIN=1
-GOLDEN_QOS_PROVEN=NO
-GOLDEN_HALT_STATE_PROVEN=NO
+GOLDEN_QOS_PROVEN=YES
+GOLDEN_HALT_STATE_PROVEN=YES
 QOS_CAUSALITY_FROM_SOURCE=UNKNOWN
 T2_NEW_MAPPING_REQUIRED=NO
 T2_READ_SAFE=YES
-T2_READY_FOR_HARDWARE=NO
-NEXT_ACTION=return the phone to fastboot, then read TWRP VBIF; do not boot XNU and do not write QoS
+T2_READY_FOR_HARDWARE=YES
+G3_QOS_GOLDEN_CONFIRMED=NO
+NEXT_ACTION=stop; do not write QoS and do not boot XNU from this result
 ```
 
-The phone on USB is `XZS USB Console`, vendor `0x1209`, product `0x000a`.
-`fastboot devices` and `adb devices` are empty. No `xzs# reboot` was sent.
+Working TWRP keeps XIN1's four remap levels at `0,1,2,3` while the MDP
+root is on and while the panel is idle. The Sony realtime row is
+`1,2,2,2`. Two end-of-burst reads showed that Sony row, then later
+in-frame reads and the settled read were `0,1,2,3` again. Halt request
+bit 1 stayed clear in every sample. Do not pick either QoS row as a
+value to program.
 
 C1 remains the baseline. `MDP_RCG_CFG=0x00000506` is conformant and is
 not the frame-start cause.
@@ -207,39 +212,118 @@ read them with MDSS collapsed. `SRC_ERR` and `ERR_INFO` stay out.
 `d8p1_read32` is the accessor. It is an identity physical load plus
 `dsb sy`, not `ml_io_map`. Page `0x009b0000` was read on the C1 boot
 by the existing R11E capture while GDSC was on. `NEW_MAPPING_REQUIRED=NO`.
-`T2_READ_SAFE=YES` for that list. `T2_READY_FOR_HARDWARE=NO` until a
-TWRP golden of the same fields exists. A safe read without the golden
-does not answer the comparison.
+`T2_READ_SAFE=YES` for that list. `T2_READY_FOR_HARDWARE=YES` as a
+passive read of those addresses. The read does not authorize a QoS or
+halt write.
 
-Sample point from the source order: after the existing pre-kick pipe
-and flush programming, before `CTL_START`. Sony writes this table in
-`pipe_queue_data`, before kickoff, and does not write it from
-`CTL_START`. Do not make the only sample post-start. Add a second
-sample only if a later TWRP capture shows the words change between
-idle and active redraw.
+The repeated TWRP words are the same with the panel idle and with the
+MDP root on. One sample after MDSS GDSC is on, including before
+`CTL_START`, sees that stable table. Sony's own write is in
+`pipe_queue_data`, before kickoff. The capture did not show a second
+stable value that exists only after `CTL_START`.
 
-## 8. TWRP
+## 8. TWRP capture
 
-Not booted. Intended read, once the phone is in fastboot:
+RAM boot only, `fastboot -s BH905SX976 boot artifacts/builds/twrp-kagura.img`.
+Not flashed. ADB came up as `BH905SX976 recovery`, uid 0.
 
 ```text
-fastboot -s BH905SX976 boot artifacts/builds/twrp-kagura.img
+Linux version 3.18.20-v01+ (androplus@sonymobile.com)
+#2 SMP PREEMPT Mon Oct 3 23:07:41 JST 2016
+fb0=mdssfb_90000 state=0
+modes=U:1080x1920p-360
+panel_status=alive
 ```
 
-Pinned debugfs, not `/dev/mem`: `/sys/kernel/debug/mdp/vbif_reg` reads
-`0x100` bytes from the current window. The default window starts at 0
-and covers the QoS block and `RD_LIM`. Halt at `0x200` needs the
-debugfs window file `vbif_off` set to that offset. That file stores
-the dump window. It is not a `writel` to VBIF. Do not write
-`vbif_reg`. That write is `writel_relaxed` to the VBIF.
+`TWRP_VBIF_READ_METHOD=DEBUGFS`.
 
 ```text
-TWRP_XIN1_QOS_IDLE=UNKNOWN
-TWRP_XIN1_QOS_ACTIVE=UNKNOWN
-TWRP_XIN1_HALT_IDLE=UNKNOWN
-TWRP_XIN1_HALT_ACTIVE=UNKNOWN
+/sys/kernel/debug/mdp/vbif_reg
+/sys/kernel/debug/mdp/vbif_off
+```
+
+`vbif_off` started at `0x00000000 100`. That window covers the QoS
+block and `RD_LIM`. Halt used a second window, `200 20`, written only
+to `vbif_off`. That file selects the dump. `vbif_reg` was never
+written. The window was restored to `0x00000000 100` before
+`adb reboot bootloader`. Fastboot returned: `BH905SX976 fastboot`.
+
+Redraws were clearpad swipes on `/dev/input/event8`, the same node used
+for G2. Several of those swipes left `mdp_clk_src` `CMD_RCGR` at
+`0x00000000` with `CFG_RCGR=0x00000506`, which is the G2 active-root
+word. Other samples in the same bursts had `CMD_RCGR=0x80000000`.
+
+### Settled idle and in-frame root-on
+
+Repeated, including eight swipe-tied reads of which several had the
+MDP root on:
+
+```text
+0x009b0020 = 0x00000000
+0x009b0024 = 0x05555555
+0x009b0028 = 0x0aaaaaaa
+0x009b002c = 0x0fffffff
+0x009b00b0 = 0x00202020
+0x009b0200 = 0x00000000
+0x009b0204 = 0x3fff0000
+0x009b0208 = 0x00000000
+0x009b020c = 0x00000030
+```
+
+XIN1 decode: QoS levels `0,1,2,3`; read-limit bits `[15:8]` = 32; halt
+request bit 1 = 0; halt status bit 1 = 0; idle bit 17 = 1.
+
+### During the swipe bursts
+
+One halt sample changed only the idle side:
+
+```text
+0x009b0200 = 0x00000000
+0x009b0204 = 0x3ffd0000
+0x009b020c = 0x00000010
+```
+
+Bit 17 cleared, so XIN1 was not idle. The halt request bit stayed 0.
+The other nine halt samples in that burst matched the settled word
+`0x3fff0000`.
+
+Two QoS dumps, both while `CMD_RCGR` was `0x80000000` or immediately
+after a burst, were:
+
+```text
+0x009b0020 = 0x00000004
+0x009b0024 = 0x05555559
+0x009b0028 = 0x0aaaaaaa
+0x009b002c = 0x0ffffffb
+```
+
+That is XIN1 levels `1,2,2,2`, and the other clients in those words did
+not move. Eight later swipes, including root-on samples, and the
+settled read two seconds later, were back to `0,1,2,3`. `RD_LIM` stayed
+`0x00202020` in every dump.
+
+| State | Sony expected | TWRP settled / root-on | TWRP other observed | Class |
+|---|---|---|---|---|
+| XIN1 QoS levels | `1,2,2,2` | `0,1,2,3` | `1,2,2,2` on two end-of-burst dumps | `RUNTIME_DYNAMIC`, stable word differs from source |
+| XIN1 halt request | clear during scanout | `0` | `0` while bit 17 was clear | `STATIC_CONFIG` for the request |
+| XIN1 halt status bit 1 | clear after the request is dropped | `0` | `0` | `STATIC_CONFIG` |
+| XIN1 idle bit 17 | set when the client is idle | `1` | `0` on one in-burst sample | `RUNTIME_DYNAMIC` |
+| XIN1 read limit | 32 | 32 | 32 | `STATIC_CONFIG`, matches the DT default |
+| `SRC_ERR` / `ERR_INFO` | not read | not read | not read | `UNKNOWN` |
+
+```text
+TWRP_XIN1_QOS_IDLE=0,1,2,3
+TWRP_XIN1_QOS_ACTIVE=0,1,2,3
+TWRP_XIN1_HALT_IDLE=request 0, status 0, idle bit 17 set
+TWRP_XIN1_HALT_ACTIVE=request 0, status 0, idle bit 17 clear on one sample
 G3_QOS_GOLDEN_CONFIRMED=NO
+G3_RUNTIME_DIFFERS_FROM_SOURCE
 ```
+
+The repeated working state is the identity remap, not the Sony realtime
+row. The Sony row was real on two dumps and was not the value present
+while the MDP root was on in the later controlled swipes. Neither row
+is selected as a correction.
 
 ## 9. Same addresses already read on C1
 
@@ -258,12 +342,16 @@ RD_LIM=0x00202020
 ```
 
 XIN1 decode of those words: halt request bit 1 clear; QoS levels
-`0,1,2,3` against the Sony RT row `1,2,2,2`; read limit bits `[15:8]`
-equal 32. One later sample showed `XIN_HALT1=0x3ffd0000`. A USB splice
-cut part of the R11E dump. Treat the intact words as the C1 observation
-of these registers. They do not authorize a QoS write.
+`0,1,2,3`; read limit bits `[15:8]` equal 32. One later sample showed
+`XIN_HALT1=0x3ffd0000`, the same busy word TWRP showed once during the
+swipes. A USB splice cut part of the R11E dump.
+
+Those intact C1 words match the repeated TWRP settled and root-on
+words. They do not match the Sony `1,2,2,2` row. That agreement is not
+a cause proof, and it is not a reason to write the Sony row into XNU.
 
 ## 10. Stop
 
-No XNU boot. No QoS write. No unhalt. The next capture is TWRP only,
-after the phone is back in fastboot.
+No XNU boot in this capture. No QoS write. No unhalt. The phone is
+`BH905SX976 fastboot`. A later passive T2 may read the same addresses.
+It does not get a QoS value to program.
