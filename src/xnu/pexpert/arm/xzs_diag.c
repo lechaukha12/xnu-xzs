@@ -941,16 +941,6 @@ xzs_diag_dispatch(uint64_t which, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 		break;
 	case 52:
 		xzs_d8m8_fb_init();
-		/* Retry 11B stops after M8-1 and uses the existing proven OFF path. */
-		if (g_m8_panel_ready) {
-			if (xzs_d8m6_panel_shutdown() == 0 && g_m8_fb_initialized) {
-				xzs_breadcrumb(0xB11B0u, 0u);
-				xzs_diag_emit("R11B_DIAGNOSTIC_STOP=yes\n");
-			} else {
-				xzs_breadcrumb(0xB11AFu, 1u);
-				xzs_diag_emit("R11B_DIAGNOSTIC_STOP=no\n");
-			}
-		}
 		break;
 	case 53:
 		xzs_d8m8_rgb0_config();
