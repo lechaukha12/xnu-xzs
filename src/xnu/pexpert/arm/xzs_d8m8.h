@@ -1097,6 +1097,161 @@ xzs_d8m8_r11e_emit(void)
 	xzs_diag_emit("RGB0_FETCH_DIRECT_SIGNAL=NONE_SOURCE_PROVEN\n");
 }
 
+/*
+ * T1: six MMCC reads after M8_1 has returned. Same identity map as
+ * xzs_mmcc_read32. No RCG, CBCR, PLL, or display write.
+ * ftbl_mdp_clk_src, mmcc-msm8996.c. hid = 2*divider - 1.
+ */
+static void
+xzs_d8m8_t1_branch(const char *name, uint32_t value)
+{
+	const char *state = "INCONSISTENT";
+
+	xzs_diag_emit("[T1] ");
+	xzs_diag_emit(name);
+	xzs_diag_emit("=0x");
+	xzs_d8p1_hex32(value);
+	xzs_diag_emit(" ENABLE_BIT0=");
+	xzs_diag_emit((value & 1u) ? "1" : "0");
+	xzs_diag_emit(" BRANCH_CLK_OFF_BIT31=");
+	xzs_diag_emit((value & 0x80000000u) ? "1" : "0");
+	if ((value & 1u) != 0 && (value & 0x80000000u) == 0) {
+		state = "ACTIVE";
+	} else if ((value & 1u) == 0 && (value & 0x80000000u) != 0) {
+		state = "INACTIVE";
+	}
+	xzs_diag_emit(" BRANCH=");
+	xzs_diag_emit(state);
+	xzs_diag_emit("\n");
+}
+
+static void
+xzs_d8m8_t1_clock_read(void)
+{
+	static const struct {
+		uint32_t src;
+		uint32_t hid;
+		uint32_t rate;
+		const char *parent;
+	} table[] = {
+		{ 5u, 13u, 85714286u, "GPLL0" },
+		{ 5u, 11u, 100000000u, "GPLL0" },
+		{ 5u, 7u, 150000000u, "GPLL0" },
+		{ 5u, 6u, 171428571u, "GPLL0" },
+		{ 5u, 5u, 200000000u, "GPLL0" },
+		{ 2u, 5u, 275000000u, "MMPLL5" },
+		{ 5u, 3u, 300000000u, "GPLL0" },
+		{ 2u, 4u, 330000000u, "MMPLL5" },
+		{ 2u, 3u, 412500000u, "MMPLL5" },
+	};
+	uint32_t cmd;
+	uint32_t cfg;
+	uint32_t src;
+	uint32_t hid;
+	uint32_t mode;
+	uint32_t root_off;
+	uint32_t rate = 0;
+	const char *parent = "UNMAPPED";
+	const char *klass = "T1-D";
+	const char *kname = "NON_TABLE_CONFIGURATION";
+	bool known_src = false;
+	bool matched = false;
+
+	xzs_diag_emit("\n[T1] T1_READ_BEGIN\n");
+	if (!g_m8_fb_initialized) {
+		xzs_diag_emit("[T1] CLASS=T1-E\n");
+		xzs_diag_emit("[T1] CLASS_NAME=INSUFFICIENT_READBACK\n");
+		xzs_diag_emit("[T1] REASON=M8_1_NOT_PASS\n");
+		xzs_diag_emit("[T1] T1_READ_END\n");
+		return;
+	}
+
+	cmd = d8p1_read32(0x008c2040u);
+	cfg = d8p1_read32(0x008c2044u);
+	xzs_diag_emit("[T1] CMD=0x");
+	xzs_d8p1_hex32(cmd);
+	xzs_diag_emit("\n[T1] CFG=0x");
+	xzs_d8p1_hex32(cfg);
+	xzs_diag_emit("\n");
+	xzs_d8m8_t1_branch("MDP_CBCR", d8p1_read32(0x008c231cu));
+	xzs_d8m8_t1_branch("AHB_CBCR", d8p1_read32(0x008c2308u));
+	xzs_d8m8_t1_branch("AXI_CBCR", d8p1_read32(0x008c2310u));
+	xzs_d8m8_t1_branch("VSYNC_CBCR", d8p1_read32(0x008c2328u));
+
+	src = (cfg >> 8) & 7u;
+	hid = cfg & 0x1fu;
+	mode = (cfg >> 12) & 3u;
+	root_off = (cmd >> 31) & 1u;
+	if (src == 0u) {
+		parent = "BI_TCXO";
+		known_src = true;
+	} else if (src == 1u) {
+		parent = "MMPLL0";
+		known_src = true;
+	} else if (src == 2u) {
+		parent = "MMPLL5";
+		known_src = true;
+	} else if (src == 5u) {
+		parent = "GPLL0";
+		known_src = true;
+	} else if (src == 6u) {
+		parent = "GPLL0_DIV";
+		known_src = true;
+	}
+
+	if (root_off) {
+		klass = "T1-B";
+		kname = "ROOT_OFF";
+	} else if (!known_src) {
+		klass = "T1-C";
+		kname = "INVALID_SOURCE";
+	} else if (mode == 0u) {
+		for (uint32_t i = 0; i < 9u; i++) {
+			if (table[i].src == src && table[i].hid == hid) {
+				matched = true;
+				rate = table[i].rate;
+				parent = table[i].parent;
+				break;
+			}
+		}
+		if (matched) {
+			klass = "T1-A";
+			kname = "VALID_TABLE_ENTRY";
+		}
+	}
+
+	xzs_diag_emit("[T1] ROOT_OFF=");
+	xzs_diag_emit(root_off ? "1\n" : "0\n");
+	xzs_diag_emit("[T1] SRC=");
+	xzs_d8m8_dec(src);
+	xzs_diag_emit("\n[T1] SRC_NAME=");
+	xzs_diag_emit(parent);
+	xzs_diag_emit("\n[T1] HID=");
+	xzs_d8m8_dec(hid);
+	xzs_diag_emit("\n[T1] MODE=");
+	xzs_d8m8_dec(mode);
+	xzs_diag_emit("\n[T1] CLASS=");
+	xzs_diag_emit(klass);
+	xzs_diag_emit("\n[T1] CLASS_NAME=");
+	xzs_diag_emit(kname);
+	xzs_diag_emit("\n[T1] TABLE_RATE=");
+	if (matched && !root_off) {
+		xzs_d8m8_dec(rate);
+		xzs_diag_emit("\n[T1] TABLE_RATE_KIND=SOURCE_TABLE_RATE\n");
+	} else {
+		xzs_diag_emit("UNKNOWN\n");
+	}
+	xzs_diag_emit("[T1] CTL_START_COUNT=0\n");
+	xzs_diag_emit("[T1] MDP_KICKOFF_COUNT=0\n");
+	xzs_diag_emit("[T1] T1_READ_END\n");
+
+	if (g_m8_panel_ready) {
+		int shutdown_rc = xzs_d8m6_panel_shutdown();
+		xzs_diag_emit("[T1] SAFE_SHUTDOWN=");
+		xzs_diag_emit(shutdown_rc == 0 ? "PASS\n" : "FAIL\n");
+	}
+}
+
 static inline void
 xzs_m8_clean_poc(uintptr_t va, size_t size)
 {
@@ -1288,7 +1443,6 @@ xzs_d8m8_fb_init(void)
 	xzs_diag_emit("[D8-M8] FRAMEBUFFER_SCANOUT_COUNT=0\n");
 	xzs_breadcrumb(0xB11A1u, 0u); /* M8-1 PASS output returned */
 	xzs_breadcrumb(0xC1100u, 0u); /* R11C: M8-1 complete */
-	xzs_d8m8_r11e_capture(0x1100u);
 }
 
 /*

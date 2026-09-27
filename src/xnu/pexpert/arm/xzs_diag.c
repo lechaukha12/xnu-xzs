@@ -831,6 +831,7 @@ xzs_diag_dispatch(uint64_t which, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 		break;
 	case 15:
 		xzs_d8m2_critical_status();
+		xzs_d8m8_t1_clock_read();
 		break;
 	case 16:
 		xzs_d8m2_critical_on("CLK-MMAGIC-AHB-001", XZS_MMCC_MMAGIC_AHB, 0);
