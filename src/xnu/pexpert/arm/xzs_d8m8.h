@@ -488,6 +488,8 @@ struct xzs_d8m8_r11a_snapshot {
 	uint32_t pp_int_count;
 	uint32_t pp_line_count;
 	uint32_t pp_out_line_count;
+	uint32_t pp_autorefresh;
+	uint32_t mdp_intr_en;
 	uint32_t mdp_intr_status;
 	uint32_t dsi_status;
 	uint32_t dsi_ctrl;
@@ -531,7 +533,9 @@ xzs_d8m8_r11a_capture(uint32_t checkpoint)
 	s->pp_int_count = d8p1_read32(0x00971014u);
 	s->pp_line_count = d8p1_read32(0x0097102cu);
 	s->pp_out_line_count = d8p1_read32(0x00971028u);
+	s->pp_autorefresh = d8p1_read32(0x00971030u);
 	s->mdp_intr_status = d8p1_read32(0x00901014u);
+	s->mdp_intr_en = d8p1_read32(0x00901010u);
 	s->dsi_ctrl = d8p1_read32(0x00994004u);
 	s->dsi_trig_ctrl = d8p1_read32(0x00994084u);
 	s->dsi_cmd_mdp_ctrl = d8p1_read32(0x00994040u);
@@ -563,8 +567,10 @@ xzs_d8m8_r11a_emit_all(void)
 		xzs_diag_emit(" CTL_FLUSH=0x"); xzs_d8p1_hex32(s->ctl_flush);
 		xzs_diag_emit(" CTL_START=0x"); xzs_d8p1_hex32(s->ctl_start);
 		xzs_diag_emit(" PP_INT_COUNT=0x"); xzs_d8p1_hex32(s->pp_int_count);
+		xzs_diag_emit(" PP_AUTOREFRESH=0x"); xzs_d8p1_hex32(s->pp_autorefresh);
 		xzs_diag_emit(" PP_LINE=0x"); xzs_d8p1_hex32(s->pp_line_count);
 		xzs_diag_emit(" PP_OUT_LINE=0x"); xzs_d8p1_hex32(s->pp_out_line_count);
+		xzs_diag_emit(" MDP_INTR_EN=0x"); xzs_d8p1_hex32(s->mdp_intr_en);
 		xzs_diag_emit(" MDP_INTR=0x"); xzs_d8p1_hex32(s->mdp_intr_status);
 		xzs_diag_emit(" DSI_STATUS_RAW=0x"); xzs_d8p1_hex32(s->dsi_status);
 		xzs_diag_emit(" DSI_MDP_BUSY_BIT="); xzs_d8m8_dec((s->dsi_status & XZS_R11A_DSI_MDP_BUSY) ? 1 : 0);
@@ -581,6 +587,315 @@ xzs_d8m8_r11a_emit_all(void)
 		xzs_diag_emit(" TIMEOUT=0x"); xzs_d8p1_hex32(s->dsi_timeout);
 		xzs_diag_emit(" RGB0_CUR_SRC0=0x"); xzs_d8p1_hex32(s->rgb0_current_src0);
 		xzs_diag_emit("\n");
+	}
+}
+
+/*
+ * Retry #11D-B passive samples. Reads only. The sole display writes remain
+ * the existing INTR_CLEAR of bits 8/12/16 and the single CTL_START.
+ */
+#define XZS_R11DB_SAMPLE_MAX 88
+#define XZS_R11DB_PRE_CLEAR  1u
+#define XZS_R11DB_POST_CLEAR 2u
+#define XZS_R11DB_GATE       3u
+#define XZS_R11DB_WRAP       4u
+#define XZS_R11DB_PP_DONE    (1u << 8)
+#define XZS_R11DB_RD_PTR     (1u << 12)
+#define XZS_R11DB_WR_PTR     (1u << 16)
+#define XZS_R11DB_AR_DONE    (1u << 20)
+
+struct xzs_d8m8_r11db_sample {
+	uint64_t timestamp_us;
+	uint32_t pp_count;
+	uint32_t autorefresh;
+	uint32_t pp_line;
+	uint32_t pp_out;
+	uint32_t intr;
+	uint32_t intr_en;
+	uint32_t dsi_status;
+	uint32_t dsi_int;
+	uint32_t ctl_flush;
+	uint32_t rgb0_cur;
+	uint32_t ack_err;
+	uint32_t timeout;
+	uint8_t kind;
+};
+
+static struct xzs_d8m8_r11db_sample g_r11db_samples[XZS_R11DB_SAMPLE_MAX];
+static uint32_t g_r11db_count;
+static uint32_t g_r11db_gate_count;
+static uint32_t g_r11db_wrap_count;
+static uint32_t g_r11db_last_gate_line;
+static uint32_t g_r11db_last_wrap_line;
+static bool g_r11db_seen_high;
+static bool g_r11db_line_seen;
+static bool g_r11db_out_seen;
+static bool g_r11db_bit8;
+static bool g_r11db_bit20;
+static uint64_t g_r11db_first_line_us;
+static uint32_t g_r11db_first_line_count;
+static uint32_t g_r11db_first_line;
+static uint32_t g_r11db_first_line_out;
+static uint32_t g_r11db_first_line_dsi;
+static uint32_t g_r11db_first_line_int;
+static uint64_t g_r11db_first_out_us;
+static uint32_t g_r11db_first_out_count;
+static uint32_t g_r11db_first_out;
+static uint32_t g_r11db_first_out_line;
+static uint32_t g_r11db_first_out_dsi;
+static uint32_t g_r11db_first_out_int;
+static uint64_t g_r11db_bit8_us;
+static uint32_t g_r11db_bit8_count;
+static uint64_t g_r11db_bit20_us;
+static uint32_t g_r11db_bit20_count;
+static uint32_t g_r11db_max_line;
+static uint32_t g_r11db_max_out;
+static uint32_t g_r11db_poll_dsi_status;
+static uint32_t g_r11db_poll_dsi_int;
+
+static uint64_t
+xzs_d8m8_cycles_to_us(uint64_t cycles, uint64_t frq)
+{
+	if (frq == 0) frq = 19200000ULL;
+	return ((cycles / frq) * 1000000ULL) + (((cycles % frq) * 1000000ULL) / frq);
+}
+
+static void
+xzs_d8m8_r11db_reset(void)
+{
+	g_r11db_count = 0;
+	g_r11db_gate_count = 0;
+	g_r11db_wrap_count = 0;
+	g_r11db_last_gate_line = 0xffffffffu;
+	g_r11db_last_wrap_line = 0xffffffffu;
+	g_r11db_seen_high = false;
+	g_r11db_line_seen = false;
+	g_r11db_out_seen = false;
+	g_r11db_bit8 = false;
+	g_r11db_bit20 = false;
+	g_r11db_first_line_us = 0;
+	g_r11db_first_line_count = 0;
+	g_r11db_first_line = 0;
+	g_r11db_first_line_out = 0;
+	g_r11db_first_line_dsi = 0;
+	g_r11db_first_line_int = 0;
+	g_r11db_first_out_us = 0;
+	g_r11db_first_out_count = 0;
+	g_r11db_first_out = 0;
+	g_r11db_first_out_line = 0;
+	g_r11db_first_out_dsi = 0;
+	g_r11db_first_out_int = 0;
+	g_r11db_bit8_us = 0;
+	g_r11db_bit8_count = 0;
+	g_r11db_bit20_us = 0;
+	g_r11db_bit20_count = 0;
+	g_r11db_max_line = 0;
+	g_r11db_max_out = 0;
+	g_r11db_poll_dsi_status = 0;
+	g_r11db_poll_dsi_int = 0;
+}
+
+static void
+xzs_d8m8_r11db_note_activity(uint64_t timestamp_us, uint32_t pp_count,
+		uint32_t pp_line, uint32_t pp_out, uint32_t intr,
+		uint32_t dsi_status, uint32_t dsi_int)
+{
+	if (pp_line > g_r11db_max_line) g_r11db_max_line = pp_line;
+	if (pp_out > g_r11db_max_out) g_r11db_max_out = pp_out;
+	if (pp_line != 0 && !g_r11db_line_seen) {
+		g_r11db_line_seen = true;
+		g_r11db_first_line_us = timestamp_us;
+		g_r11db_first_line_count = pp_count;
+		g_r11db_first_line = pp_line;
+		g_r11db_first_line_out = pp_out;
+		g_r11db_first_line_dsi = dsi_status;
+		g_r11db_first_line_int = dsi_int;
+	}
+	if (pp_out != 0 && !g_r11db_out_seen) {
+		g_r11db_out_seen = true;
+		g_r11db_first_out_us = timestamp_us;
+		g_r11db_first_out_count = pp_count;
+		g_r11db_first_out = pp_out;
+		g_r11db_first_out_line = pp_line;
+		g_r11db_first_out_dsi = dsi_status;
+		g_r11db_first_out_int = dsi_int;
+	}
+	if ((intr & XZS_R11DB_PP_DONE) != 0 && !g_r11db_bit8) {
+		g_r11db_bit8 = true;
+		g_r11db_bit8_us = timestamp_us;
+		g_r11db_bit8_count = pp_count;
+	}
+	if ((intr & XZS_R11DB_AR_DONE) != 0 && !g_r11db_bit20) {
+		g_r11db_bit20 = true;
+		g_r11db_bit20_us = timestamp_us;
+		g_r11db_bit20_count = pp_count;
+	}
+}
+
+static void
+xzs_d8m8_r11db_store(uint8_t kind, uint64_t timestamp_us, uint32_t pp_count,
+		uint32_t autorefresh, uint32_t pp_line, uint32_t pp_out,
+		uint32_t intr, uint32_t intr_en, uint32_t dsi_status,
+		uint32_t dsi_int, uint32_t ctl_flush, uint32_t rgb0_cur,
+		uint32_t ack_err, uint32_t timeout)
+{
+	struct xzs_d8m8_r11db_sample *s;
+
+	if (g_r11db_count >= XZS_R11DB_SAMPLE_MAX) return;
+	s = &g_r11db_samples[g_r11db_count++];
+	s->timestamp_us = timestamp_us;
+	s->pp_count = pp_count;
+	s->autorefresh = autorefresh;
+	s->pp_line = pp_line;
+	s->pp_out = pp_out;
+	s->intr = intr;
+	s->intr_en = intr_en;
+	s->dsi_status = dsi_status;
+	s->dsi_int = dsi_int;
+	s->ctl_flush = ctl_flush;
+	s->rgb0_cur = rgb0_cur;
+	s->ack_err = ack_err;
+	s->timeout = timeout;
+	s->kind = kind;
+}
+
+static void
+xzs_d8m8_r11db_capture_full(uint8_t kind)
+{
+	uint64_t timestamp_us = xzs_d8m8_r11a_timestamp_us();
+	uint32_t dsi_status = d8p1_read32(0x00994008u);
+	uint32_t dsi_int = d8p1_read32(0x00994110u);
+	uint32_t pp_count = d8p1_read32(0x00971014u);
+	uint32_t pp_line = d8p1_read32(0x0097102cu);
+	uint32_t pp_out = d8p1_read32(0x00971028u);
+	uint32_t autorefresh = d8p1_read32(0x00971030u);
+	uint32_t intr = d8p1_read32(0x00901014u);
+	uint32_t intr_en = d8p1_read32(0x00901010u);
+
+	xzs_d8m8_r11db_store(kind, timestamp_us, pp_count, autorefresh, pp_line,
+			pp_out, intr, intr_en, dsi_status, dsi_int,
+			d8p1_read32(0x00902018u), d8p1_read32(0x009150a4u),
+			d8p1_read32(0x00994068u), d8p1_read32(0x009940c0u));
+}
+
+static void
+xzs_d8m8_r11db_observe(uint64_t cycles, uint64_t frq)
+{
+	uint32_t pp_count = d8p1_read32(0x00971014u);
+	uint32_t pp_line = d8p1_read32(0x0097102cu);
+	uint32_t pp_out = d8p1_read32(0x00971028u);
+	uint32_t intr = d8p1_read32(0x00901014u);
+	uint32_t dsi_status = d8p1_read32(0x00994008u);
+	uint32_t dsi_int = d8p1_read32(0x00994110u);
+	uint32_t low = pp_count & 0xffffu;
+	uint64_t timestamp_us = xzs_d8m8_cycles_to_us(cycles, frq);
+	bool in_gate = (low >= 0x770u) && (low <= 0x790u);
+
+	g_r11db_poll_dsi_status = dsi_status;
+	g_r11db_poll_dsi_int = dsi_int;
+	xzs_d8m8_r11db_note_activity(timestamp_us, pp_count, pp_line, pp_out,
+			intr, dsi_status, dsi_int);
+	if (low >= 0x700u) g_r11db_seen_high = true;
+
+	if (in_gate && g_r11db_gate_count < 72u && low != g_r11db_last_gate_line &&
+	    g_r11db_count < XZS_R11DB_SAMPLE_MAX) {
+		uint32_t before = g_r11db_count;
+		xzs_d8m8_r11db_store(XZS_R11DB_GATE, timestamp_us, pp_count,
+				d8p1_read32(0x00971030u), pp_line, pp_out, intr, 0,
+				dsi_status, dsi_int, 0, 0, 0, 0);
+		if (g_r11db_count != before) {
+			g_r11db_last_gate_line = low;
+			g_r11db_gate_count++;
+		}
+	}
+	if (g_r11db_seen_high && low < 0x100u && g_r11db_wrap_count < 4u &&
+	    low != g_r11db_last_wrap_line && g_r11db_count < XZS_R11DB_SAMPLE_MAX) {
+		uint32_t before = g_r11db_count;
+		xzs_d8m8_r11db_store(XZS_R11DB_WRAP, timestamp_us, pp_count,
+				d8p1_read32(0x00971030u), pp_line, pp_out, intr, 0,
+				dsi_status, dsi_int, 0, 0, 0, 0);
+		if (g_r11db_count != before) {
+			g_r11db_last_wrap_line = low;
+			g_r11db_wrap_count++;
+		}
+	}
+}
+
+static void
+xzs_d8m8_r11db_emit(void)
+{
+	static const char *const kinds[] = { "?", "PRE_CLEAR", "POST_CLEAR", "GATE", "WRAP" };
+
+	/* Post-CTL_START checkpoints only. Pre-clear status must not set these flags. */
+	for (uint32_t n = 5; n < XZS_R11A_SNAPSHOT_COUNT; n++) {
+		struct xzs_d8m8_r11a_snapshot *snap;
+		if (!g_m8_r11a_snapshot_valid[n]) continue;
+		snap = &g_m8_r11a_snapshots[n];
+		xzs_d8m8_r11db_note_activity(snap->timestamp_us, snap->pp_int_count,
+				snap->pp_line_count, snap->pp_out_line_count,
+				snap->mdp_intr_status, snap->dsi_status, snap->dsi_int_ctrl);
+	}
+	xzs_diag_emit("--- R11DB PASSIVE PP GATE SAMPLES ---\n");
+	for (uint32_t i = 0; i < g_r11db_count; i++) {
+		struct xzs_d8m8_r11db_sample *s = &g_r11db_samples[i];
+		const char *kind = (s->kind < 5u) ? kinds[s->kind] : "?";
+		xzs_diag_emit("R11DB_SAMPLE KIND="); xzs_diag_emit(kind);
+		xzs_diag_emit(" TIMESTAMP_US="); xzs_d8m8_dec(s->timestamp_us);
+		xzs_diag_emit(" PP_COUNT=0x"); xzs_d8p1_hex32(s->pp_count);
+		xzs_diag_emit(" PP_AUTOREFRESH=0x"); xzs_d8p1_hex32(s->autorefresh);
+		xzs_diag_emit(" PP_LINE=0x"); xzs_d8p1_hex32(s->pp_line);
+		xzs_diag_emit(" PP_OUT=0x"); xzs_d8p1_hex32(s->pp_out);
+		xzs_diag_emit(" MDP_INTR=0x"); xzs_d8p1_hex32(s->intr);
+		xzs_diag_emit(" DONE8="); xzs_d8m8_dec((s->intr & XZS_R11DB_PP_DONE) ? 1 : 0);
+		xzs_diag_emit(" RD12="); xzs_d8m8_dec((s->intr & XZS_R11DB_RD_PTR) ? 1 : 0);
+		xzs_diag_emit(" WR16="); xzs_d8m8_dec((s->intr & XZS_R11DB_WR_PTR) ? 1 : 0);
+		xzs_diag_emit(" AR_DONE20="); xzs_d8m8_dec((s->intr & XZS_R11DB_AR_DONE) ? 1 : 0);
+		xzs_diag_emit(" DSI_STATUS=0x"); xzs_d8p1_hex32(s->dsi_status);
+		xzs_diag_emit(" DSI_BUSY="); xzs_d8m8_dec((s->dsi_status & XZS_R11A_DSI_MDP_BUSY) ? 1 : 0);
+		xzs_diag_emit(" DSI_INT=0x"); xzs_d8p1_hex32(s->dsi_int);
+		xzs_diag_emit(" DSI_MDP_DONE="); xzs_d8m8_dec((s->dsi_int & XZS_R11A_DSI_MDP_DONE) ? 1 : 0);
+		if (s->kind == XZS_R11DB_PRE_CLEAR || s->kind == XZS_R11DB_POST_CLEAR) {
+			xzs_diag_emit(" MDP_INTR_EN=0x"); xzs_d8p1_hex32(s->intr_en);
+			xzs_diag_emit(" CTL_FLUSH=0x"); xzs_d8p1_hex32(s->ctl_flush);
+			xzs_diag_emit(" RGB0_CUR=0x"); xzs_d8p1_hex32(s->rgb0_cur);
+			xzs_diag_emit(" ACK_ERR=0x"); xzs_d8p1_hex32(s->ack_err);
+			xzs_diag_emit(" TIMEOUT=0x"); xzs_d8p1_hex32(s->timeout);
+		}
+		xzs_diag_emit("\n");
+	}
+	xzs_diag_emit("R11DB_GATE_SAMPLES="); xzs_d8m8_dec(g_r11db_gate_count); xzs_diag_emit("\n");
+	xzs_diag_emit("R11DB_WRAP_SAMPLES="); xzs_d8m8_dec(g_r11db_wrap_count); xzs_diag_emit("\n");
+	xzs_diag_emit("R11DB_PP_LINE_NONZERO="); xzs_diag_emit(g_r11db_line_seen ? "yes\n" : "no\n");
+	xzs_diag_emit("R11DB_PP_OUT_NONZERO="); xzs_diag_emit(g_r11db_out_seen ? "yes\n" : "no\n");
+	xzs_diag_emit("R11DB_PP_DONE_BIT8="); xzs_diag_emit(g_r11db_bit8 ? "yes\n" : "no\n");
+	xzs_diag_emit("R11DB_AR_DONE_BIT20="); xzs_diag_emit(g_r11db_bit20 ? "yes\n" : "no\n");
+	xzs_diag_emit("R11DB_MAX_PP_LINE=0x"); xzs_d8p1_hex32(g_r11db_max_line); xzs_diag_emit("\n");
+	xzs_diag_emit("R11DB_MAX_PP_OUT=0x"); xzs_d8p1_hex32(g_r11db_max_out); xzs_diag_emit("\n");
+	if (g_r11db_line_seen) {
+		xzs_diag_emit("R11DB_FIRST_PP_LINE_US="); xzs_d8m8_dec(g_r11db_first_line_us);
+		xzs_diag_emit(" PP_COUNT=0x"); xzs_d8p1_hex32(g_r11db_first_line_count);
+		xzs_diag_emit(" PP_LINE=0x"); xzs_d8p1_hex32(g_r11db_first_line);
+		xzs_diag_emit(" PP_OUT=0x"); xzs_d8p1_hex32(g_r11db_first_line_out);
+		xzs_diag_emit(" DSI_STATUS=0x"); xzs_d8p1_hex32(g_r11db_first_line_dsi);
+		xzs_diag_emit(" DSI_INT=0x"); xzs_d8p1_hex32(g_r11db_first_line_int);
+		xzs_diag_emit("\n");
+	}
+	if (g_r11db_out_seen) {
+		xzs_diag_emit("R11DB_FIRST_PP_OUT_US="); xzs_d8m8_dec(g_r11db_first_out_us);
+		xzs_diag_emit(" PP_COUNT=0x"); xzs_d8p1_hex32(g_r11db_first_out_count);
+		xzs_diag_emit(" PP_OUT=0x"); xzs_d8p1_hex32(g_r11db_first_out);
+		xzs_diag_emit(" PP_LINE=0x"); xzs_d8p1_hex32(g_r11db_first_out_line);
+		xzs_diag_emit(" DSI_STATUS=0x"); xzs_d8p1_hex32(g_r11db_first_out_dsi);
+		xzs_diag_emit(" DSI_INT=0x"); xzs_d8p1_hex32(g_r11db_first_out_int);
+		xzs_diag_emit("\n");
+	}
+	if (g_r11db_bit8) {
+		xzs_diag_emit("R11DB_FIRST_PP_DONE_US="); xzs_d8m8_dec(g_r11db_bit8_us);
+		xzs_diag_emit(" PP_COUNT=0x"); xzs_d8p1_hex32(g_r11db_bit8_count); xzs_diag_emit("\n");
+	}
+	if (g_r11db_bit20) {
+		xzs_diag_emit("R11DB_FIRST_AR_DONE_US="); xzs_d8m8_dec(g_r11db_bit20_us);
+		xzs_diag_emit(" PP_COUNT=0x"); xzs_d8p1_hex32(g_r11db_bit20_count); xzs_diag_emit("\n");
 	}
 }
 
@@ -1344,6 +1659,7 @@ xzs_d8m8_kickoff(void)
 		return;
 	}
 	s_ctl_start_attempted = 1;
+	xzs_d8m8_r11db_reset();
 
 	/* 1. Verify PREKICK_READY conditions */
 	uint32_t rgb0_addr = d8p1_read32(0x00915014u);
@@ -1380,8 +1696,11 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("PRE_INTR_STATUS=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("INTR_STATUS_PRE=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 
+	/* Buffered read immediately before the existing clear. No extra write. */
+	xzs_d8m8_r11db_capture_full(XZS_R11DB_PRE_CLEAR);
 	d8p1_write32(0x00901018u, 0x00011100u);
 	uint32_t post_clear_intr = d8p1_read32(0x00901014u);
+	xzs_d8m8_r11db_capture_full(XZS_R11DB_POST_CLEAR);
 	xzs_diag_emit("POST_CLEAR_INTR_STATUS=0x"); xzs_d8p1_hex32(post_clear_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("INTR_STATUS_POST_CLEAR=0x"); xzs_d8p1_hex32(post_clear_intr); xzs_diag_emit("\n");
 
@@ -1510,7 +1829,7 @@ xzs_d8m8_kickoff(void)
 	uint64_t frq = 19200000ULL;
 	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
 	if (frq == 0) frq = 19200000ULL;
-	/* Sparse samples stop at +20 ms; there is no additional completion poll. */
+	/* Sparse samples stop at +20 ms. A missing wrap may extend that by 3 ms. */
 
 	/* Track first timestamps for RD_PTR, WR_PTR, and PP0_DONE */
 	uint64_t first_rd_ptr_us = 0;
@@ -1534,6 +1853,11 @@ xzs_d8m8_kickoff(void)
 
 	/* WRITE EXACTLY ONCE: *(volatile uint32_t *)0x0090201c = 0x00000001 */
 	d8p1_write32(0x0090201cu, 0x00000001u);
+	{
+		uint64_t post_cycles = 0;
+		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(post_cycles));
+		xzs_d8m8_r11db_observe(post_cycles, frq);
+	}
 	uint32_t r11a_immediate_dsi_status = d8p1_read32(0x00994008u);
 	uint32_t r11a_immediate_dsi_int = d8p1_read32(0x00994110u);
 
@@ -1595,14 +1919,13 @@ xzs_d8m8_kickoff(void)
 		while (1) {
 			uint64_t c;
 			__asm__ volatile("mrs %0, cntvct_el0" : "=r"(c));
-			uint32_t dsi_poll_status = d8p1_read32(0x00994008u);
-			uint32_t dsi_poll_int = d8p1_read32(0x00994110u);
+			xzs_d8m8_r11db_observe(c, frq);
 			uint64_t dsi_poll_us = ((c - start_cycles) * 1000000ULL) / frq;
-			if (!seen_dsi_busy && (dsi_poll_status & XZS_R11A_DSI_MDP_BUSY) != 0) {
+			if (!seen_dsi_busy && (g_r11db_poll_dsi_status & XZS_R11A_DSI_MDP_BUSY) != 0) {
 				seen_dsi_busy = true;
 				first_dsi_busy_us = dsi_poll_us;
 			}
-			if (!seen_dsi_mdp_done_raw && (dsi_poll_int & XZS_R11A_DSI_MDP_DONE) != 0) {
+			if (!seen_dsi_mdp_done_raw && (g_r11db_poll_dsi_int & XZS_R11A_DSI_MDP_DONE) != 0) {
 				seen_dsi_mdp_done_raw = true;
 				first_dsi_mdp_done_us = dsi_poll_us;
 			}
@@ -1632,6 +1955,28 @@ xzs_d8m8_kickoff(void)
 		if (!seen_done && (hf_samples[s].intr_status & 0x00000100u) != 0) {
 			first_pp_done_us = s_us;
 			seen_done = true;
+		}
+	}
+	/*
+	 * The gate-to-wrap gap is about 2 ms. If that region was entered inside
+	 * the 20 ms window and the wrap sample is still missing, allow 3 ms more
+	 * and then stop. This is not a second kickoff and writes nothing.
+	 */
+	if (g_r11db_gate_count > 0 && g_r11db_wrap_count == 0) {
+		uint64_t ext_cycles = start_cycles + (23000ULL * frq) / 1000000ULL;
+		while (g_r11db_wrap_count == 0) {
+			uint64_t c;
+			__asm__ volatile("mrs %0, cntvct_el0" : "=r"(c));
+			if (c >= ext_cycles) break;
+			xzs_d8m8_r11db_observe(c, frq);
+			if (!seen_dsi_busy && (g_r11db_poll_dsi_status & XZS_R11A_DSI_MDP_BUSY) != 0) {
+				seen_dsi_busy = true;
+				first_dsi_busy_us = ((c - start_cycles) * 1000000ULL) / frq;
+			}
+			if (!seen_dsi_mdp_done_raw && (g_r11db_poll_dsi_int & XZS_R11A_DSI_MDP_DONE) != 0) {
+				seen_dsi_mdp_done_raw = true;
+				first_dsi_mdp_done_us = ((c - start_cycles) * 1000000ULL) / frq;
+			}
 		}
 	}
 	/* Capture the final state before any post-kickoff breadcrumb or USB output. */
@@ -1671,6 +2016,28 @@ xzs_d8m8_kickoff(void)
 
 	/* Buffered register values now leave the device over the console. */
 	xzs_d8m8_r11a_emit_all();
+	xzs_d8m8_r11db_emit();
+	if (g_m8_r11a_snapshot_valid[4] && g_m8_r11a_snapshot_valid[5]) {
+		xzs_diag_emit("R11DB_AUTOREFRESH_BEFORE=0x");
+		xzs_d8p1_hex32(g_m8_r11a_snapshots[4].pp_autorefresh);
+		xzs_diag_emit("\nR11DB_AUTOREFRESH_AFTER=0x");
+		xzs_d8p1_hex32(g_m8_r11a_snapshots[5].pp_autorefresh);
+		xzs_diag_emit("\nR11DB_AUTOREFRESH_BIT31_BEFORE=");
+		xzs_d8m8_dec((g_m8_r11a_snapshots[4].pp_autorefresh & 0x80000000u) ? 1 : 0);
+		xzs_diag_emit("\nR11DB_AUTOREFRESH_BIT31_AFTER=");
+		xzs_d8m8_dec((g_m8_r11a_snapshots[5].pp_autorefresh & 0x80000000u) ? 1 : 0);
+		xzs_diag_emit("\n");
+	}
+	if (g_r11db_count >= 2 &&
+	    g_r11db_samples[0].kind == XZS_R11DB_PRE_CLEAR &&
+	    g_r11db_samples[1].kind == XZS_R11DB_POST_CLEAR) {
+		uint32_t stuck = g_r11db_samples[1].intr & 0x00011100u;
+		xzs_diag_emit("R11DB_POST_CLEAR_BITS8_12_16=");
+		xzs_diag_emit(stuck == 0 ? "CLEAR\n" : "STILL_SET\n");
+		xzs_diag_emit("R11DB_POST_CLEAR_INTR=0x");
+		xzs_d8p1_hex32(g_r11db_samples[1].intr);
+		xzs_diag_emit("\n");
+	}
 	xzs_diag_emit("CTL_START_WRITE=0x00000001\n");
 	xzs_diag_emit("CTL_START_COUNT="); xzs_d8m8_dec(g_m8_ctl_start_count); xzs_diag_emit("\n");
 	xzs_diag_emit("MDP_KICKOFF_COUNT="); xzs_d8m8_dec(g_m8_kickoff_count); xzs_diag_emit("\n");
