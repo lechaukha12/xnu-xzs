@@ -1,0 +1,41 @@
+ID,Area,Hypothesis,Status,EvidenceLevel,Retry,Source,HardwareEvidence,Confidence,ReopenAllowed,Notes
+H01,Framebuffer,Mapping of 0x98000000 fails,DISPROVEN,3,11B-11D-B,xzs_d8m8_fb_init,M8-1 PASS and RGB latch on earlier boots,HIGH,no,11E abort does not overturn prior successful maps
+H02,Framebuffer,Pattern or cache contents are wrong,DISPROVEN,3,11B,RETRY11B audit,first word already valid before kickoff,HIGH,no,
+H03,RGB0,Source address never latches,DISPROVEN,3,4 and 11D-B,CURRENT_SRC0_ADDR,0 to 0x98000000 after CTL_START,HIGH,no,latch is not an AXI beat
+H04,RGB0,Format stride or ROI programming is wrong,DISPROVEN,3,7,register plan,pre-kick readback matched,HIGH,no,
+H05,LM0,Base stage or mixer select is wrong,DISPROVEN,2,5 and 7,mdss_mdp_ctl.c,CTL_LAYER_0=0x200,HIGH,no,
+H06,LM0,LM_BLEND0 is required for the base stage,DISPROVEN,2,source audit,DEFERRED.md section on base stage,no blend registers written,HIGH,no,
+H07,CTL,CTL_TOP is wrong,DISPROVEN,3,5,0x00902014,0x00020020 read back,HIGH,no,
+H08,CTL,CTL_LAYER_0 is wrong,DISPROVEN,3,5,0x00902000,0x00000200 read back,HIGH,no,
+H09,CTL,DISP_INTF_SEL is wrong,DISPROVEN,3,5,0x00901004,0x00000100 read back,HIGH,no,
+H10,CTL,Command-mode flush mask is wrong,DISPROVEN,3,7 and 11D-B,0x00902018,0x00020048 consumed to 0,HIGH,no,
+H11,PP,Tearcheck left disabled,DISPROVEN,3,8,PP_TEAR_CHECK_EN,value 1 at prekick,HIGH,no,
+H12,PP,Timing counter is not running,DISPROVEN,4,10 and 11D-B,PP_INT_COUNT_VAL,wrap and ~16.56 ms period,HIGH,no,
+H13,PP,START_POS 0x780 is never reached,DISPROVEN,4,11D-B,PP_INT_COUNT_VAL,direct sample 0x780,HIGH,no,
+H14,PP,SYNC_WRCOUNT 0x785 is never reached,DISPROVEN,4,11D-B,PP_INT_COUNT_VAL,direct sample 0x785,HIGH,no,
+H15,PP,Autorefresh is enabled and replaces CTL_START,DISPROVEN,3,11D-B,PP_AUTOREFRESH_CONFIG,word 0 bit31 0 before and after start,HIGH,no,
+H16,DSI,Controller is disabled,DISPROVEN,4,M4,DSI_CTRL,0x000001f5,HIGH,no,
+H17,DSI,Command mode is not selected,DISPROVEN,4,M4,panel type and DSI_CTRL,command-mode host sealed,HIGH,no,
+H18,DSI,Stream geometry is wrong,DISPROVEN,3,11D-B prekick,STREAM0,0x0ca90039 and 0x07800438,HIGH,no,
+H19,DSI,MDP software trigger write is required,DISPROVEN,2,11A source,mdss_dsi_cmd_mdp_start,no MMIO trigger in that function,HIGH,no,deferred doc section 7.2 is superseded
+H20,PP,PP0 is the wrong ping-pong,DISPROVEN,2,frame-start audit,DT index 0,0x00971000,HIGH,no,
+H21,PP,A normal one-shot PP register write is missing,DISPROVEN,2,frame-start audit,intf_cmd tearcheck,XNU image matches hw_vsync_mode false,HIGH,no,
+H22,TE,Physical TE pulses are present on GPIO10,DISPROVEN,4,9 and 11E preamble,GPIO10 sample,0 transitions,HIGH,no,
+H23,TE,Physical TE is mandatory for the timing counter,DISPROVEN,4,10 and 11D-B,bit 20 clear,counter still runs,HIGH,no,
+H24,TE,Internal TE image is sufficient to release pixels,STILL_OPEN,0,11D-B,bit 20 comment,PP_LINE stayed 0,LOW,yes,source does not say bit 20 gates one-shot pixels
+H25,Clock,VSYNC and MDP core are the same clock,DISPROVEN,2,resource audit,mmcc-msm8996.c,separate CBCR addresses,HIGH,no,
+H26,Clock,DSI byte pixel or escape clock is off at kickoff,DISPROVEN,3,M3 and resource audit,CBCR,branches left enabled,HIGH,no,
+H27,Clock,MDP core source and rate are a valid operating point,STILL_OPEN,1,resource audit,mdp_clk_src,CBCR enabled rate never read,MEDIUM,yes,11E did not sample it
+H28,Bus,Interconnect vote is absent in XNU,PROVEN,2,resource audit,perf_update_bus,no XNU call,HIGH,no,absence is proven; effect is not
+H29,Bus,Missing vote is why PP_LINE stays 0,STILL_OPEN,0,resource audit,no silicon alias,UNOBSERVABLE,LOW,yes,do not invent a proxy
+H30,VBIF,QoS program differs from Sony 1 2 2 2,STILL_OPEN,1,pipe.c legacy remap,never read,MEDIUM,yes,11E reads were not executed
+H31,VBIF,XIN1 is halted before kickoff,INSUFFICIENT_EVIDENCE,1,halt is suspend path,XNU never writes halt,LOW,yes,
+H32,Fetch,AXI framebuffer fetch occurred,STILL_OPEN,0,resource audit,no beat counter,CURRENT_SRC latch only,LOW,yes,do not answer from the latch
+H33,PP,PP issued a DSI request,STILL_OPEN,0,request audit,no request-issued bit,line and done stayed 0,LOW,yes,zeros are not proof of absence
+H34,DSI,DSI rejected a frame,STILL_OPEN,0,11D-B,busy and done stayed 0,not a rejection bit,LOW,yes,
+H35,DSI,DSI transport PHY or host is broken,DISPROVEN,4,M3 M4 M6,ACK_ERR 0,DCS completed,HIGH,no,static transport only
+H36,Clock,LUT TBU throttle or MNOC clocks are required on this 8996 node,NOT_APPLICABLE,2,msm8996-mdss.dtsi,absent from clock-names,,HIGH,no,
+H37,SMMU,IOMMU attach is required,NOT_APPLICABLE,2,SMMU bypass,DIRECT_PA_SAFE,prior boots,HIGH,no,
+H38,11E,11E shows the core clock or VBIF is invalid,DISPROVEN,1,11E host.txt,no R11E_SAMPLE,abort before PASS,HIGH,no,do not use as negative evidence
+H39,Panel,Keyaki on-command order matches XNU,STILL_OPEN,2,keyaki.dts:1771,TEON DISPON then post-on SLPOUT,XNU sends SLPOUT first,LOW,yes,downstream of the current gate
+H40,11E,Reset cause inside ml_io_map_unmappable,INSUFFICIENT_EVIDENCE,1,git diff 5600ef8 e869829,map call unchanged,no byte after the map line,LOW,yes,
