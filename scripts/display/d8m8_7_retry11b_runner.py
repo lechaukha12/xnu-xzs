@@ -48,7 +48,7 @@ def main():
         detected = subprocess.run(["fastboot", "devices"], capture_output=True,
                                   text=True, check=True, timeout=10).stdout
         record("fastboot_devices_before=\n" + detected)
-        if f"{SERIAL}\tfastboot" not in detected:
+        if not any(line.split() == [SERIAL, "fastboot"] for line in detected.splitlines()):
             raise RuntimeError("target serial is not in fastboot")
 
         record("=== ONE XNU FASTBOOT BOOT ===\n")
