@@ -27,6 +27,18 @@
 
 extern void xzs_diag_emit(const char *msg);
 extern void xzs_watchdog_pet(void);
+extern void xzs_breadcrumb(uint32_t checkpoint, uint32_t status);
+
+/* Retry 11B: format without touching the framebuffer or console. */
+static void
+xzs_d8m8_word0_hex(uint32_t value, char out[9])
+{
+	static const char hex[] = "0123456789abcdef";
+	for (int shift = 28, i = 0; shift >= 0; shift -= 4, i++) {
+		out[i] = hex[(value >> shift) & 0xfu];
+	}
+	out[8] = '\0';
+}
 
 /* Helper to print register line: name, address, value */
 static void
@@ -662,6 +674,7 @@ xzs_m8_write_reg(const char *name, uint32_t addr, uint32_t val, uint32_t expecte
 static void
 xzs_d8m8_fb_init(void)
 {
+	xzs_breadcrumb(0xB1100u, 0u); /* M8-1 entered */
 	xzs_diag_emit("\n=======================================================\n");
 	xzs_diag_emit("=== [M8-1] FRAMEBUFFER ALLOCATION & PATTERN FILL    ===\n");
 	xzs_diag_emit("=======================================================\n");
@@ -677,6 +690,7 @@ xzs_d8m8_fb_init(void)
 		return;
 	}
 
+	xzs_breadcrumb(0xB1110u, 0u); /* before mapping/lookup */
 	if (g_m8_fb_va == 0) {
 		xzs_diag_emit("  [MAP] Mapping physical framebuffer via ml_io_map_unmappable...\n");
 		g_m8_fb_va = (uintptr_t)ml_io_map_unmappable(g_m8_fb_pa, g_m8_fb_size, 0x6u); /* 0x6 = VM_WIMG_WCOMB */
@@ -685,6 +699,7 @@ xzs_d8m8_fb_init(void)
 		xzs_diag_emit("!!! M8-1 FAIL: ml_io_map_unmappable returned NULL!\n");
 		return;
 	}
+	xzs_breadcrumb(0xB1120u, 0u); /* mapping/lookup complete */
 
 	xzs_diag_emit("  FB_PA       = 0x"); xzs_d8p1_hex32(g_m8_fb_pa); xzs_diag_emit("\n");
 	xzs_diag_emit("  FB_VA       = 0x");
@@ -698,9 +713,22 @@ xzs_d8m8_fb_init(void)
 	xzs_diag_emit("  FB_ALIGNMENT= 128\n");
 	xzs_diag_emit("  FB_FORMAT   = XRGB8888\n");
 
+	xzs_breadcrumb(0xB1130u, 0u); /* PA/VA checked; before probe log */
 	xzs_diag_emit("  [PROBE] Reading word 0 from FB_VA...\n");
+	xzs_breadcrumb(0xB1140u, 0u); /* immediately before first FB load */
 	uint32_t probe_val = *(volatile uint32_t *)g_m8_fb_va;
-	xzs_diag_emit("  [PROBE] Word 0 = 0x"); xzs_d8p1_hex32(probe_val); xzs_diag_emit(" (READ PASS)\n");
+	xzs_breadcrumb(0xB1150u, 0u); /* first FB load returned */
+	xzs_breadcrumb(0xB1160u, 0u); /* before probe prefix output */
+	xzs_diag_emit("  [PROBE] Word 0 = 0x");
+	xzs_breadcrumb(0xB1170u, 0u); /* prefix console call returned */
+	xzs_breadcrumb(0xB1180u, 0u); /* before value formatter */
+	char probe_hex[9];
+	xzs_d8m8_word0_hex(probe_val, probe_hex);
+	xzs_breadcrumb(0xB1190u, 0u); /* formatter returned */
+	xzs_diag_emit(probe_hex);
+	xzs_breadcrumb(0xB1191u, 0u); /* value console call returned */
+	xzs_diag_emit(" (READ PASS)\n");
+	xzs_breadcrumb(0xB1192u, 0u); /* suffix console call returned */
 
 	xzs_diag_emit("  [PROBE] Writing word 0 to FB_VA...\n");
 	*(volatile uint32_t *)g_m8_fb_va = 0x000000ffu;
@@ -740,6 +768,7 @@ xzs_d8m8_fb_init(void)
 
 	g_m8_fb_initialized = true;
 	g_m8_fb_cache_cleaned = true;
+	xzs_breadcrumb(0xB11A0u, 0u); /* M8-1 validation complete */
 
 	xzs_diag_emit("  FB_ALLOC         = PASS\n");
 	xzs_diag_emit("  FB_ALIGNMENT     = PASS\n");
@@ -750,6 +779,7 @@ xzs_d8m8_fb_init(void)
 	xzs_diag_emit("[D8-M8] CTL_START_COUNT=0\n");
 	xzs_diag_emit("[D8-M8] MDP_KICKOFF_COUNT=0\n");
 	xzs_diag_emit("[D8-M8] FRAMEBUFFER_SCANOUT_COUNT=0\n");
+	xzs_breadcrumb(0xB11A1u, 0u); /* M8-1 PASS output returned */
 }
 
 /*
