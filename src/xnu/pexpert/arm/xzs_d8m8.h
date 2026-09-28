@@ -1884,8 +1884,8 @@ xzs_d8m8_stream_config(void)
 	/* Step 3: Enable tear check */
 	xzs_m8_write_reg("PP0_TEAR_CHECK_EN ", 0x00971000u, 0x00000001u, 0x00000001u, false);
 
-	/* DSI0 Host MDP Stream: Restored to 0x00000008 (MSM8996 MDP command mode stream enable) */
-	xzs_m8_write_reg("DSI_CMD_MDP_CTRL  ", 0x00994040u, 0x00000008u, 0x00000008u, false);
+	/* DSI0 Host MDP Stream: Restored to 0x06100006 (MSM8996 MDP command mode stream enable + packing/interleave, matching TWRP golden) */
+	xzs_m8_write_reg("DSI_CMD_MDP_CTRL  ", 0x00994040u, 0x06100006u, 0x06100006u, false);
 
 	/* Special handling for DSI_CMD_DCS_CTRL (0x00994044): Bit 16 is write-only latch */
 	xzs_m8_write_reg("DSI_CMD_DCS_CTRL  ", 0x00994044u, 0x00013c2cu, 0x00003c2cu, false);
@@ -2220,7 +2220,7 @@ xzs_d8m8_prekick_status(void)
 	             pp_timing_ok &&
 	             (mdp_intr_en == 0) &&
 	             ((post_clear_intr & 0x00011100u) == 0) &&
-	             (dsi_mdp_ctrl == 0x00000008u) && ((dsi_dcs_cmd & 0xffffu) == 0x3c2cu) &&
+	             (dsi_mdp_ctrl == 0x06100006u) && ((dsi_dcs_cmd & 0xffffu) == 0x3c2cu) &&
 	             (dsi_st0_ctrl == 0x0ca90039u) && (dsi_st0_tot == 0x07800438u) &&
 	             (dsi_trig_ctrl == 0x80000004u) &&
 	             (disp_intf == 0x100u) && (ctl_layer == 0x200u) && (ctl_top == 0x00020020u) &&
@@ -2331,7 +2331,7 @@ xzs_d8m8_kickoff(void)
 	             ((ctl_flush == 0x00020048u) || g_m8_flush_configured) &&
 	             vsync_clk_unhalted &&
 	             pp_timing_ok &&
-	             (dsi_mdp_ctrl == 0x00000008u) &&
+	             (dsi_mdp_ctrl == 0x06100006u) &&
 	             (dsi_trig_ctrl == 0x80000004u) &&
 	             (mdp_intr_en == 0) &&
 	             ((post_clear_intr & 0x00011100u) == 0);
