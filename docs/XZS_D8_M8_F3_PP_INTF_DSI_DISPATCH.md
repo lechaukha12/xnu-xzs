@@ -206,10 +206,9 @@ During the F3 boot, `xzs_d8m8_stream_config()` wrote `0x06100006` to `DSI_CMD_MD
 ```
 This verified that the hardware accepted and maintained the golden command mode packing configuration.
 
-### 2. Analysis of the Post-RD_PTR Blockage
-In the F3 boot:
-- Prior to kickoff, `MDP_INTR_STATUS` showed `0x00001000` (Bit 12: `PP0_RD_PTR`), confirming that physical TE edges from the panel were reaching the Ping-Pong block.
+- Prior to kickoff, `MDP_INTR_STATUS` showed `0x00001000` (Bit 12: `PP0_RD_PTR`, latched status from panel initialization).
 - Pre-kick interrupt clear successfully zeroed `MDP_INTR_STATUS` to `0x00000000`.
+- Following the clear, no fresh `PP0_RD_PTR` assertion or counter reload was observed (`F3_FRESH_POST_CLEAR_TE = NOT_PROVEN`).
 - Upon `CTL_START = 1`:
   - `CTL_FLUSH` dropped from `0x00020048` to `0x00000000` immediately.
   - `RGB0_CURRENT_SRC0_ADDR` latched `0x98000000`.
