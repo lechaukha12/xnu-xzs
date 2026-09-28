@@ -653,6 +653,24 @@ static uint32_t g_r11db_max_out;
 static uint32_t g_r11db_poll_dsi_status;
 static uint32_t g_r11db_poll_dsi_int;
 
+struct xzs_f1_te_metrics {
+	uint32_t min_pp_int_cnt;
+	uint32_t max_pp_int_cnt;
+	uint32_t prev_pp_int_cnt;
+	uint32_t backward_jumps;
+	int32_t largest_neg_delta;
+	uint32_t rd_ptr_count;
+	uint32_t wr_ptr_count;
+	uint32_t max_pp_line;
+	uint32_t max_pp_out;
+	bool seen_pp_done;
+	bool seen_dsi_busy;
+	bool seen_dsi_mdp_done;
+	uint32_t poll_iterations;
+	uint64_t observation_window_us;
+};
+static struct xzs_f1_te_metrics g_f1_metrics;
+
 static uint64_t
 xzs_d8m8_cycles_to_us(uint64_t cycles, uint64_t frq)
 {
@@ -663,6 +681,21 @@ xzs_d8m8_cycles_to_us(uint64_t cycles, uint64_t frq)
 static void
 xzs_d8m8_r11db_reset(void)
 {
+	g_f1_metrics.min_pp_int_cnt = 0xffffffffu;
+	g_f1_metrics.max_pp_int_cnt = 0;
+	g_f1_metrics.prev_pp_int_cnt = 0;
+	g_f1_metrics.backward_jumps = 0;
+	g_f1_metrics.largest_neg_delta = 0;
+	g_f1_metrics.rd_ptr_count = 0;
+	g_f1_metrics.wr_ptr_count = 0;
+	g_f1_metrics.max_pp_line = 0;
+	g_f1_metrics.max_pp_out = 0;
+	g_f1_metrics.seen_pp_done = false;
+	g_f1_metrics.seen_dsi_busy = false;
+	g_f1_metrics.seen_dsi_mdp_done = false;
+	g_f1_metrics.poll_iterations = 0;
+	g_f1_metrics.observation_window_us = 0;
+
 	g_r11db_count = 0;
 	g_r11db_gate_count = 0;
 	g_r11db_wrap_count = 0;
@@ -797,6 +830,26 @@ xzs_d8m8_r11db_observe(uint64_t cycles, uint64_t frq)
 	g_r11db_poll_dsi_int = dsi_int;
 	xzs_d8m8_r11db_note_activity(timestamp_us, pp_count, pp_line, pp_out,
 			intr, dsi_status, dsi_int);
+
+	/* F1 metric tracking */
+	g_f1_metrics.poll_iterations++;
+	if (pp_count < g_f1_metrics.min_pp_int_cnt) g_f1_metrics.min_pp_int_cnt = pp_count;
+	if (pp_count > g_f1_metrics.max_pp_int_cnt) g_f1_metrics.max_pp_int_cnt = pp_count;
+	if (g_f1_metrics.prev_pp_int_cnt != 0 && pp_count < g_f1_metrics.prev_pp_int_cnt) {
+		g_f1_metrics.backward_jumps++;
+		int32_t delta = (int32_t)pp_count - (int32_t)g_f1_metrics.prev_pp_int_cnt;
+		if (delta < g_f1_metrics.largest_neg_delta) g_f1_metrics.largest_neg_delta = delta;
+	}
+	g_f1_metrics.prev_pp_int_cnt = pp_count;
+
+	if ((intr & 0x00001000u) != 0) g_f1_metrics.rd_ptr_count++;
+	if ((intr & 0x00010000u) != 0) g_f1_metrics.wr_ptr_count++;
+	if ((intr & 0x00000100u) != 0) g_f1_metrics.seen_pp_done = true;
+	if (pp_line > g_f1_metrics.max_pp_line) g_f1_metrics.max_pp_line = pp_line;
+	if (pp_out > g_f1_metrics.max_pp_out) g_f1_metrics.max_pp_out = pp_out;
+	if ((dsi_status & XZS_R11A_DSI_MDP_BUSY) != 0) g_f1_metrics.seen_dsi_busy = true;
+	if ((dsi_int & XZS_R11A_DSI_MDP_DONE) != 0) g_f1_metrics.seen_dsi_mdp_done = true;
+
 	if (low >= 0x700u) g_r11db_seen_high = true;
 
 	if (in_gate && g_r11db_gate_count < 72u && low != g_r11db_last_gate_line &&
@@ -2538,31 +2591,30 @@ xzs_d8m8_kickoff(void)
 		}
 	}
 	/*
-	 * The gate-to-wrap gap is about 2 ms. If that region was entered inside
-	 * the 20 ms window and the wrap sample is still missing, allow 3 ms more
-	 * and then stop. This is not a second kickoff and writes nothing.
+	 * F1: Extend passive high-frequency observation to 60 ms (~3.6 frames @ 60Hz).
+	 * Bounded in-memory polling without flooding USB console.
 	 */
-	if (g_r11db_gate_count > 0 && g_r11db_wrap_count == 0) {
-		uint64_t ext_cycles = start_cycles + (23000ULL * frq) / 1000000ULL;
-		while (g_r11db_wrap_count == 0) {
-			uint64_t c;
-			__asm__ volatile("mrs %0, cntvct_el0" : "=r"(c));
-			if (c >= ext_cycles) break;
-			xzs_d8m8_r11db_observe(c, frq);
-			if (!seen_dsi_busy && (g_r11db_poll_dsi_status & XZS_R11A_DSI_MDP_BUSY) != 0) {
-				seen_dsi_busy = true;
-				first_dsi_busy_us = ((c - start_cycles) * 1000000ULL) / frq;
-			}
-			if (!seen_dsi_mdp_done_raw && (g_r11db_poll_dsi_int & XZS_R11A_DSI_MDP_DONE) != 0) {
-				seen_dsi_mdp_done_raw = true;
-				first_dsi_mdp_done_us = ((c - start_cycles) * 1000000ULL) / frq;
-			}
+	uint64_t target_60ms_c = start_cycles + (60000ULL * frq) / 1000000ULL;
+	while (1) {
+		uint64_t c;
+		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(c));
+		xzs_d8m8_r11db_observe(c, frq);
+		uint64_t dsi_poll_us = ((c - start_cycles) * 1000000ULL) / frq;
+		if (!seen_dsi_busy && (g_r11db_poll_dsi_status & XZS_R11A_DSI_MDP_BUSY) != 0) {
+			seen_dsi_busy = true;
+			first_dsi_busy_us = dsi_poll_us;
 		}
+		if (!seen_dsi_mdp_done_raw && (g_r11db_poll_dsi_int & XZS_R11A_DSI_MDP_DONE) != 0) {
+			seen_dsi_mdp_done_raw = true;
+			first_dsi_mdp_done_us = dsi_poll_us;
+		}
+		if (c >= target_60ms_c) break;
 	}
+
 	/* Capture the final state before any post-kickoff breadcrumb or USB output. */
 	xzs_d8m8_r11e_capture(0x11D0u);
 	xzs_d8m8_r11a_capture(12);
-	xzs_breadcrumb(0xC11C0u, 0u); /* 20 ms samples and final state collected */
+	xzs_breadcrumb(0xC11C0u, 0u); /* 60 ms samples and final state collected */
 
 	uint32_t pp0_int_cnt_post = hf_samples[0].pp0_int_cnt;
 	uint32_t pp0_line_cnt_post = hf_samples[0].pp0_line_cnt;
@@ -2645,7 +2697,33 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("\n");
 	xzs_diag_emit("MAX_LINE_COUNT_OBSERVED=0x"); xzs_d8p1_hex32(max_line_cnt); xzs_diag_emit("\n");
 	xzs_diag_emit("MAX_OUT_LINE_COUNT_OBSERVED=0x"); xzs_d8p1_hex32(max_out_line_cnt); xzs_diag_emit("\n");
-	uint64_t elapsed_us = ((end_cycles - start_cycles) * 1000000ULL) / frq;
+	uint64_t f1_end_cycles = 0;
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(f1_end_cycles));
+	g_f1_metrics.observation_window_us = ((f1_end_cycles - start_cycles) * 1000000ULL) / frq;
+
+	xzs_diag_emit("\n=== F1 PASSIVE TE OBSERVATION (60 ms) ===\n");
+	xzs_diag_emit("F1_OBSERVATION_WINDOW_US="); xzs_d8m8_dec(g_f1_metrics.observation_window_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_POLL_ITERATIONS="); xzs_d8m8_dec(g_f1_metrics.poll_iterations); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_MIN_PP_INT_COUNT=0x"); xzs_d8p1_hex32(g_f1_metrics.min_pp_int_cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_MAX_PP_INT_COUNT=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_int_cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_BACKWARD_JUMPS="); xzs_d8m8_dec(g_f1_metrics.backward_jumps); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_LARGEST_NEG_DELTA=");
+	if (g_f1_metrics.largest_neg_delta < 0) {
+		xzs_diag_emit("-");
+		xzs_d8m8_dec((uint64_t)(-g_f1_metrics.largest_neg_delta));
+	} else {
+		xzs_diag_emit("0");
+	}
+	xzs_diag_emit("\n");
+	xzs_diag_emit("F1_PP0_RD_PTR_COUNT="); xzs_d8m8_dec(g_f1_metrics.rd_ptr_count); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_PP0_WR_PTR_COUNT="); xzs_d8m8_dec(g_f1_metrics.wr_ptr_count); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_PP_LINE_MAX=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_line); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_PP_OUT_MAX=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_out); xzs_diag_emit("\n");
+	xzs_diag_emit("F1_PP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_pp_done ? "yes\n" : "no\n");
+	xzs_diag_emit("F1_DSI_BUSY_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_busy ? "yes\n" : "no\n");
+	xzs_diag_emit("F1_CMD_MDP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_mdp_done ? "yes\n" : "no\n");
+
+	uint64_t elapsed_us = g_f1_metrics.observation_window_us;
 	xzs_diag_emit("OBSERVATION_ELAPSED_US="); xzs_d8m8_dec(elapsed_us); xzs_diag_emit("\n");
 	xzs_diag_emit("R11C_FINAL_ACK_ERR=0x"); xzs_d8p1_hex32(g_m8_r11a_snapshots[12].dsi_ack_err); xzs_diag_emit("\n");
 	xzs_diag_emit("R11C_FINAL_TIMEOUT=0x"); xzs_d8p1_hex32(g_m8_r11a_snapshots[12].dsi_timeout); xzs_diag_emit("\n");
