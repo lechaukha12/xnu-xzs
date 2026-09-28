@@ -2367,15 +2367,10 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("F4_FRESH_TE_SEEN="); xzs_diag_emit(fresh_te_seen ? "YES\n" : "NO\n");
 	xzs_diag_emit("F4_TE_GATE="); xzs_diag_emit(fresh_te_seen ? "PASS\n" : "FAIL\n");
 
-	if (!fresh_te_seen) {
-		xzs_diag_emit("F4_CLASS=F4-TE-NOT-REPRODUCED\n");
-		xzs_diag_emit("M8_7=BLOCKED (Fresh TE not seen after clear in this boot; stopping per Section 22)\n");
-		xzs_d8m8_r11e_emit();
-		int shutdown_rc = 0;
-		if (g_m8_panel_ready) shutdown_rc = xzs_d8m6_panel_shutdown();
-		xzs_diag_emit("R11C_SAFE_SHUTDOWN="); xzs_diag_emit(shutdown_rc == 0 ? "PASS\n" : "FAIL\n");
-		return;
-	}
+	xzs_diag_emit("F5_BRANCH=E2\n");
+	xzs_diag_emit("PREKICK_FRESH_TE_SEEN="); xzs_diag_emit(fresh_te_seen ? "YES\n" : "NO\n");
+	xzs_diag_emit("PREKICK_TE_GATE_STATUS=REMOVED_PER_BRANCH_E2\n");
+
 
 	bool pp_timing_ok = (pp0_tear == 1) &&
 	                    (pp0_sync_cfg_vsync == 0x00180093u) &&
@@ -2814,6 +2809,17 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("F1_PP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_pp_done ? "yes\n" : "no\n");
 	xzs_diag_emit("F1_DSI_BUSY_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_busy ? "yes\n" : "no\n");
 	xzs_diag_emit("F1_CMD_MDP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_mdp_done ? "yes\n" : "no\n");
+
+	/* F5 Canonical Metrics */
+	bool f5_post_kick_fresh_te = (g_f1_metrics.rd_ptr_count > 0) || (g_f1_metrics.backward_jumps > 0);
+	xzs_diag_emit("FRESH_TE_AFTER_CTL_START="); xzs_diag_emit(f5_post_kick_fresh_te ? "YES\n" : "NO\n");
+	xzs_diag_emit("PREKICK_TE_GATE_WAS_INVALID="); xzs_diag_emit(f5_post_kick_fresh_te ? "YES\n" : "NO\n");
+	xzs_diag_emit("PP_LINE_NONZERO="); xzs_diag_emit((g_f1_metrics.max_pp_line > 0) ? "YES\n" : "NO\n");
+	xzs_diag_emit("PP_LINE_MAX=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_line); xzs_diag_emit("\n");
+	xzs_diag_emit("PP_OUT_NONZERO="); xzs_diag_emit((g_f1_metrics.max_pp_out > 0) ? "YES\n" : "NO\n");
+	xzs_diag_emit("PP0_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_pp_done ? "YES\n" : "NO\n");
+	xzs_diag_emit("DSI_MDP_BUSY_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_busy ? "YES\n" : "NO\n");
+	xzs_diag_emit("CMD_MDP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_mdp_done ? "YES\n" : "NO\n");
 
 	uint64_t elapsed_us = g_f1_metrics.observation_window_us;
 	xzs_diag_emit("OBSERVATION_ELAPSED_US="); xzs_d8m8_dec(elapsed_us); xzs_diag_emit("\n");
