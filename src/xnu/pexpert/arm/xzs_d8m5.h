@@ -148,6 +148,30 @@ xzs_d8m5_set_vddio_low(void)
 	g_d8m5_counters.gpio51_disable_count++;
 }
 
+static inline void
+xzs_d8m5_set_touch_vddio_high(void)
+{
+	xzs_d8m5_gpio_write_latch(GPIO_TOUCH_VDDIO_NUM, 1);
+}
+
+static inline void
+xzs_d8m5_set_touch_vddio_low(void)
+{
+	xzs_d8m5_gpio_write_latch(GPIO_TOUCH_VDDIO_NUM, 0);
+}
+
+static inline void
+xzs_d8m5_set_touch_reset_high(void)
+{
+	xzs_d8m5_gpio_write_latch(GPIO_TOUCH_RESET_NUM, 1);
+}
+
+static inline void
+xzs_d8m5_set_touch_reset_low(void)
+{
+	xzs_d8m5_gpio_write_latch(GPIO_TOUCH_RESET_NUM, 0);
+}
+
 /* Print full safety counters */
 static void
 xzs_d8m5_dump_safety_counters(void)
@@ -364,8 +388,9 @@ xzs_d8m5_power_down(void)
 	xzs_diag_emit("\n[D8-M5-SHUTDOWN] Executing source-proven panel power-down:\n");
 
 	/* Step 1: Assert Reset LOW -> delay 5ms per somc,pw-off-rst-b-seq = <0x00 0x05> */
-	xzs_diag_emit("  1. Assert RESET LOW (GPIO8=0)...\n");
+	xzs_diag_emit("  1. Assert RESET LOW (GPIO8=0, GPIO89=0)...\n");
 	xzs_d8m5_set_reset_low();
+	xzs_d8m5_set_touch_reset_low();
 	xzs_d8p2_delay_us(5000); // 5 ms
 
 	/* Step 2: Disable IBB (-5.6V) */
@@ -410,9 +435,10 @@ xzs_d8m5_power_down(void)
 	/* Wait 10ms per somc,pw-wait-after-off-vsp = <0x0a> */
 	xzs_d8p2_delay_us(10000);
 
-	/* Step 4: Disable VDDIO (GPIO 51 LOW) */
-	xzs_diag_emit("  4. Disabling VDDIO (GPIO51=0)...\n");
+	/* Step 4: Disable VDDIO (GPIO 51 LOW, GPIO 50 LOW) */
+	xzs_diag_emit("  4. Disabling VDDIO (GPIO51=0, GPIO50=0)...\n");
 	xzs_d8m5_set_vddio_low();
+	xzs_d8m5_set_touch_vddio_low();
 	/* somc,pw-wait-after-off-vddio = <0x00> */
 
 	/* Step 5: Power-down settling period per somc,pw-down-period = <0x12c> (300 ms) */
@@ -422,13 +448,19 @@ xzs_d8m5_power_down(void)
 	/* Verify final safe state */
 	uint32_t rst_in = xzs_d8m5_gpio_read_in(GPIO_RESET_NUM);
 	uint32_t vddio_in = xzs_d8m5_gpio_read_in(GPIO_VDDIO_NUM);
+	uint32_t t_rst_in = xzs_d8m5_gpio_read_in(GPIO_TOUCH_RESET_NUM);
+	uint32_t t_vddio_in = xzs_d8m5_gpio_read_in(GPIO_TOUCH_VDDIO_NUM);
 	xzs_diag_emit("  Shutdown Verification: GPIO8_IN=");
 	xzs_diag_emit(rst_in ? "HIGH(FAULT)" : "LOW(OK)");
 	xzs_diag_emit(" GPIO51_IN=");
 	xzs_diag_emit(vddio_in ? "HIGH(FAULT)" : "LOW(OK)");
+	xzs_diag_emit(" GPIO89_IN=");
+	xzs_diag_emit(t_rst_in ? "HIGH(FAULT)" : "LOW(OK)");
+	xzs_diag_emit(" GPIO50_IN=");
+	xzs_diag_emit(t_vddio_in ? "HIGH(FAULT)" : "LOW(OK)");
 	xzs_diag_emit("\n");
 
-	if (!ibb_off || !lab_off || rst_in != 0 || vddio_in != 0) {
+	if (!ibb_off || !lab_off || rst_in != 0 || vddio_in != 0 || t_rst_in != 0 || t_vddio_in != 0) {
 		xzs_diag_emit("[D8-M5-SHUTDOWN] FAILED: Power-down incomplete!\n");
 		return -1;
 	}

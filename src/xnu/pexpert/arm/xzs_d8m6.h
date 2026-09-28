@@ -432,18 +432,20 @@ xzs_d8m6_panel_power_up_to_idle(void)
 	xzs_d8p2_run(1);
 
 	/* 1. Reset held LOW */
-	xzs_diag_emit("  1. Assert RESET LOW...\n");
+	xzs_diag_emit("  1. Assert RESET LOW (GPIO8=0, GPIO89=0)...\n");
 	xzs_d8m5_set_reset_low();
+	xzs_d8m5_set_touch_reset_low();
 	if (xzs_d8m5_gpio_read_in(GPIO_RESET_NUM) != 0) {
 		xzs_diag_emit("!!! FAIL: GPIO8 is HIGH while expecting LOW!\n");
 		return -3;
 	}
 
 	/* 2. VDDIO ON -> wait 10 ms */
-	xzs_diag_emit("  2. Enable VDDIO (GPIO51=1)...\n");
+	xzs_diag_emit("  2. Enable VDDIO (GPIO51=1, GPIO50=1)...\n");
 	xzs_d8m5_set_vddio_high();
+	xzs_d8m5_set_touch_vddio_high();
 	xzs_d8p2_delay_us(10000);
-	if (xzs_d8m5_gpio_read_in(GPIO_VDDIO_NUM) == 0) {
+	if (xzs_d8m5_gpio_read_in(GPIO_VDDIO_NUM) == 0 || xzs_d8m5_gpio_read_in(GPIO_TOUCH_VDDIO_NUM) == 0) {
 		xzs_diag_emit("!!! FAIL: VDDIO enable failed!\n");
 		xzs_d8m5_power_down();
 		return -4;
@@ -510,7 +512,22 @@ xzs_d8m6_panel_power_up_to_idle(void)
 		return -7;
 	}
 
-	xzs_diag_emit("[D8-M6-POWERUP] SUCCESS: Panel at powered-idle state (Reset=HIGH, LAB=+5.6V, IBB=-5.6V, VDDIO=1.8V).\n");
+	/* 6. In-Cell Touch Reset Sequence per somc,ewu-rst-seq = <0 2 1 5> -> LOW 2ms, HIGH 5ms */
+	xzs_diag_emit("  6. In-Cell Touch Reset Pulse (Low 2ms -> High 5ms -> settling 40ms)...\n");
+	xzs_d8m5_set_touch_reset_low();
+	xzs_d8p2_delay_us(2000); // 2 ms
+	xzs_d8m5_set_touch_reset_high();
+	xzs_d8p2_delay_us(5000); // 5 ms
+	/* somc,ewu-wait-after-touch-reset = <0x28> (40 ms) */
+	xzs_d8p2_delay_us(40000); // 40 ms
+
+	if (xzs_d8m5_gpio_read_in(GPIO_TOUCH_RESET_NUM) == 0) {
+		xzs_diag_emit("!!! FAIL: GPIO89 failed to release HIGH!\n");
+		xzs_d8m5_power_down();
+		return -8;
+	}
+
+	xzs_diag_emit("[D8-M6-POWERUP] SUCCESS: Panel and in-cell touch at powered-idle state (Reset=HIGH, TouchReset=HIGH, LAB=+5.6V, IBB=-5.6V, VDDIO=1.8V).\n");
 	return 0;
 }
 

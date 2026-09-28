@@ -2591,10 +2591,10 @@ xzs_d8m8_kickoff(void)
 		}
 	}
 	/*
-	 * F1: Extend passive high-frequency observation to 60 ms (~3.6 frames @ 60Hz).
+	 * F2: Extend passive high-frequency observation to 100 ms (~6 frames @ 60Hz per Section 21).
 	 * Bounded in-memory polling without flooding USB console.
 	 */
-	uint64_t target_60ms_c = start_cycles + (60000ULL * frq) / 1000000ULL;
+	uint64_t target_100ms_c = start_cycles + (100000ULL * frq) / 1000000ULL;
 	while (1) {
 		uint64_t c;
 		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(c));
@@ -2608,7 +2608,7 @@ xzs_d8m8_kickoff(void)
 			seen_dsi_mdp_done_raw = true;
 			first_dsi_mdp_done_us = dsi_poll_us;
 		}
-		if (c >= target_60ms_c) break;
+		if (c >= target_100ms_c) break;
 	}
 
 	/* Capture the final state before any post-kickoff breadcrumb or USB output. */
@@ -2701,7 +2701,29 @@ xzs_d8m8_kickoff(void)
 	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(f1_end_cycles));
 	g_f1_metrics.observation_window_us = ((f1_end_cycles - start_cycles) * 1000000ULL) / frq;
 
-	xzs_diag_emit("\n=== F1 PASSIVE TE OBSERVATION (60 ms) ===\n");
+	xzs_diag_emit("\n=== F2 IN-CELL PANEL RECOVERY OBSERVATION (100 ms) ===\n");
+	xzs_diag_emit("F2_OBSERVATION_WINDOW_US="); xzs_d8m8_dec(g_f1_metrics.observation_window_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_POLL_ITERATIONS="); xzs_d8m8_dec(g_f1_metrics.poll_iterations); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_MIN_PP_INT_COUNT=0x"); xzs_d8p1_hex32(g_f1_metrics.min_pp_int_cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_MAX_PP_INT_COUNT=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_int_cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_BACKWARD_JUMPS="); xzs_d8m8_dec(g_f1_metrics.backward_jumps); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_LARGEST_NEG_DELTA=");
+	if (g_f1_metrics.largest_neg_delta < 0) {
+		xzs_diag_emit("-");
+		xzs_d8m8_dec((uint64_t)(-g_f1_metrics.largest_neg_delta));
+	} else {
+		xzs_diag_emit("0");
+	}
+	xzs_diag_emit("\n");
+	xzs_diag_emit("F2_PP0_RD_PTR_COUNT="); xzs_d8m8_dec(g_f1_metrics.rd_ptr_count); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_PP0_WR_PTR_COUNT="); xzs_d8m8_dec(g_f1_metrics.wr_ptr_count); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_PP_LINE_MAX=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_line); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_PP_OUT_MAX=0x"); xzs_d8p1_hex32(g_f1_metrics.max_pp_out); xzs_diag_emit("\n");
+	xzs_diag_emit("F2_PP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_pp_done ? "yes\n" : "no\n");
+	xzs_diag_emit("F2_DSI_BUSY_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_busy ? "yes\n" : "no\n");
+	xzs_diag_emit("F2_CMD_MDP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_mdp_done ? "yes\n" : "no\n");
+
+	/* Compatibility aliases */
 	xzs_diag_emit("F1_OBSERVATION_WINDOW_US="); xzs_d8m8_dec(g_f1_metrics.observation_window_us); xzs_diag_emit("\n");
 	xzs_diag_emit("F1_POLL_ITERATIONS="); xzs_d8m8_dec(g_f1_metrics.poll_iterations); xzs_diag_emit("\n");
 	xzs_diag_emit("F1_MIN_PP_INT_COUNT=0x"); xzs_d8p1_hex32(g_f1_metrics.min_pp_int_cnt); xzs_diag_emit("\n");
