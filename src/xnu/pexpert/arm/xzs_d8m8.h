@@ -2291,6 +2291,11 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("VSYNC_CBCR=0x"); xzs_d8p1_hex32(vsync_cbcr); xzs_diag_emit("\n");
 	xzs_diag_emit("VSYNC_CLOCK_UNHALTED="); xzs_diag_emit(vsync_clk_unhalted ? "yes\n" : "no\n");
 
+	/* Timing frequency */
+	uint64_t frq = 19200000ULL;
+	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
+	if (frq == 0) frq = 19200000ULL;
+
 	/* Pre-kick interrupt cleanup: Read PRE_INTR_STATUS, clear 0x00011100 (bits 8, 12, 16), re-read POST_CLEAR_INTR_STATUS */
 	uint32_t pre_intr = d8p1_read32(0x00901014u);
 	xzs_diag_emit("PRE_INTR_STATUS=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
@@ -2303,6 +2308,74 @@ xzs_d8m8_kickoff(void)
 	xzs_d8m8_r11db_capture_full(XZS_R11DB_POST_CLEAR);
 	xzs_diag_emit("POST_CLEAR_INTR_STATUS=0x"); xzs_d8p1_hex32(post_clear_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("INTR_STATUS_POST_CLEAR=0x"); xzs_d8p1_hex32(post_clear_intr); xzs_diag_emit("\n");
+
+	/* F4 Phase C: Same-Boot Fresh TE Hard Gate (Sections 19-23)
+	 * Observe for bounded window (70 ms, spanning >4 frame intervals of 16.6 ms at 60 Hz).
+	 * Fresh TE qualifies if new PP0_RD_PTR (bit 12) asserts after clear, OR counter reloads.
+	 */
+	uint32_t fresh_te_poll_iterations = 0;
+	uint32_t fresh_te_rd_ptr_count = 0;
+	uint32_t fresh_te_backward_jumps = 0;
+	uint32_t fresh_te_min_pp_int_cnt = 0xffffffffu;
+	uint32_t fresh_te_max_pp_int_cnt = 0;
+	uint32_t fresh_te_prev_pp_int_cnt = 0;
+	bool fresh_rd_ptr_seen = false;
+	uint64_t fresh_rd_ptr_timestamp_us = 0;
+
+	uint64_t te_gate_start = 0;
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(te_gate_start));
+	uint64_t te_gate_deadline = te_gate_start + (70000ULL * frq) / 1000000ULL; /* 70 ms */
+
+	while (1) {
+		uint64_t cur_cycles = 0;
+		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(cur_cycles));
+		uint32_t cur_intr = d8p1_read32(0x00901014u);
+		uint32_t cur_pp_cnt = d8p1_read32(0x00971014u);
+
+		fresh_te_poll_iterations++;
+		if (cur_pp_cnt < fresh_te_min_pp_int_cnt) fresh_te_min_pp_int_cnt = cur_pp_cnt;
+		if (cur_pp_cnt > fresh_te_max_pp_int_cnt) fresh_te_max_pp_int_cnt = cur_pp_cnt;
+		if (fresh_te_prev_pp_int_cnt != 0 && cur_pp_cnt < fresh_te_prev_pp_int_cnt) {
+			fresh_te_backward_jumps++;
+		}
+		fresh_te_prev_pp_int_cnt = cur_pp_cnt;
+
+		if ((cur_intr & 0x00001000u) != 0) {
+			fresh_te_rd_ptr_count++;
+			if (!fresh_rd_ptr_seen) {
+				fresh_rd_ptr_seen = true;
+				fresh_rd_ptr_timestamp_us = ((cur_cycles - te_gate_start) * 1000000ULL) / frq;
+			}
+		}
+
+		if (cur_cycles >= te_gate_deadline) {
+			break;
+		}
+	}
+
+	uint64_t te_gate_end = 0;
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(te_gate_end));
+	uint64_t actual_te_window_us = ((te_gate_end - te_gate_start) * 1000000ULL) / frq;
+	bool fresh_te_seen = fresh_rd_ptr_seen || (fresh_te_backward_jumps > 0);
+
+	xzs_diag_emit("FRESH_TE_OBSERVATION_WINDOW_US="); xzs_d8m8_dec(actual_te_window_us); xzs_diag_emit("\n");
+	xzs_diag_emit("FRESH_TE_POLL_ITERATIONS="); xzs_d8m8_dec(fresh_te_poll_iterations); xzs_diag_emit("\n");
+	xzs_diag_emit("FRESH_TE_MIN_PP_INT_CNT=0x"); xzs_d8p1_hex32(fresh_te_min_pp_int_cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("FRESH_TE_MAX_PP_INT_CNT=0x"); xzs_d8p1_hex32(fresh_te_max_pp_int_cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("FRESH_TE_BACKWARD_JUMPS="); xzs_d8m8_dec(fresh_te_backward_jumps); xzs_diag_emit("\n");
+	xzs_diag_emit("FRESH_RD_PTR_AFTER_CLEAR="); xzs_diag_emit(fresh_rd_ptr_seen ? "YES\n" : "NO\n");
+	xzs_diag_emit("F4_FRESH_TE_SEEN="); xzs_diag_emit(fresh_te_seen ? "YES\n" : "NO\n");
+	xzs_diag_emit("F4_TE_GATE="); xzs_diag_emit(fresh_te_seen ? "PASS\n" : "FAIL\n");
+
+	if (!fresh_te_seen) {
+		xzs_diag_emit("F4_CLASS=F4-TE-NOT-REPRODUCED\n");
+		xzs_diag_emit("M8_7=BLOCKED (Fresh TE not seen after clear in this boot; stopping per Section 22)\n");
+		xzs_d8m8_r11e_emit();
+		int shutdown_rc = 0;
+		if (g_m8_panel_ready) shutdown_rc = xzs_d8m6_panel_shutdown();
+		xzs_diag_emit("R11C_SAFE_SHUTDOWN="); xzs_diag_emit(shutdown_rc == 0 ? "PASS\n" : "FAIL\n");
+		return;
+	}
 
 	bool pp_timing_ok = (pp0_tear == 1) &&
 	                    (pp0_sync_cfg_vsync == 0x00180093u) &&
@@ -2451,9 +2524,6 @@ xzs_d8m8_kickoff(void)
 	xzs_watchdog_pet();
 	__asm__ volatile("dsb sy\n\tisb sy" ::: "memory");
 
-	uint64_t frq = 19200000ULL;
-	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
-	if (frq == 0) frq = 19200000ULL;
 	/* Sparse samples stop at +20 ms. A missing wrap may extend that by 3 ms. */
 
 	/* Track first timestamps for RD_PTR, WR_PTR, and PP0_DONE */
