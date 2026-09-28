@@ -240,14 +240,14 @@ MDSS PingPong 0 Tearcheck Logic
   ▼
 MDSS VSYNC Clock Domain
   ├── MDSS_CLK_MDP_VSYNC active
-  └── VSYNC_CBCR (0x00996040) bit 0 = 1
+  └── VSYNC_CBCR (0x008c2328) bit 0 = 1
 ```
 
 ### Components Audit
 - There are **no intermediate MDSS top-level mux registers** for VSYNC input on MSM8996.
 - The path from TLMM function 1 (`mdp_vsync`) to the PingPong tearcheck block is a direct internal interconnect.
 - XNU configures:
-  1. `TLMM_GPIO_CFG(10) = 0x00000204` (`fn1_mdp_vsync`, pull-down, 2mA, input).
+  1. `TLMM_GPIO_CFG(10) = 0x00000005` (`fn1_mdp_vsync`, pull-down, 2mA, input).
   2. `PP0_SYNC_CONFIG_VSYNC = 0x00180093` (`BIT19=1, BIT20=1`).
   3. `PP0_TEAR_CHECK_EN = 0x1`.
   4. `VSYNC_CBCR = 0x1` (unhalted).
