@@ -48,7 +48,7 @@ Under one clean RAM boot with zero flash modifications, exactly one `CTL_START` 
 Upon `CTL_START`:
 1. `CTL_FLUSH` was consumed (`0x00020048` → `0x00000000` within 165 µs).
 2. `RGB0_CURRENT_SRC0_ADDR` latched the framebuffer base (`0x00000000` → `0x98000000`).
-3. `MDP_INTR` set bit 16 (`INT_STATUS_CTL_0_START = 0x00010000`).
+3. `MDP_INTR` set bit 16 (`PP0_WR_PTR = 0x00010000`).
 4. `PP_INT_COUNT_VAL` was freely incrementing (`0x1804` → `0x2251`).
 5. However, `PP_LINE` remained `0x00000000` throughout the entire 20,001 µs observation window.
 6. Downstream signals (`PP_OUT`, `PP0_DONE`, `DSI_MDP_BUSY`, `CMD_MDP_DONE`) remained 0.
@@ -153,7 +153,7 @@ T + 165 us (Snapshot C1160 - Post-Kick 1):
   PP_INT_COUNT=0x0000181a   <-- Freely incrementing (+22)
   PP_LINE=0x00000000        <-- Gate closed
   PP_OUT_LINE=0x00000000
-  MDP_INTR=0x00010000       <-- Bit 16 (CTL_0_START) active
+  MDP_INTR=0x00010000       <-- Bit 16 (PP0_WR_PTR) active
   RGB0_CUR_SRC0=0x98000000  <-- Framebuffer address latched!
   DSI_STATUS_RAW=0x00000000
 
@@ -191,7 +191,7 @@ Observation summary:
 1. **PP Configuration Fidelity**: All 10 external-TE golden registers read back cleanly without deviation.
 2. **CTL Subsystem Consumption**: `CTL_FLUSH` bitmask (`0x00020048`: flush CTL, LM0, RGB0) was consumed immediately upon `CTL_START`.
 3. **RGB0 Fetch Pipe Latch**: `RGB0_CURRENT_SRC0_ADDR` transitioned from `0x0` to `0x98000000`, proving the pipe descriptor was latched by hardware.
-4. **MDP Core & VSYNC Clocks**: `PP_INT_COUNT_VAL` incremented continuously (rate ~105 kHz, consistent with 19.2 MHz XO / internal division), proving the internal counter clock domain is active.
+4. **PP VSYNC Counter Clock Domain**: `PP_INT_COUNT_VAL` incremented continuously (rate ~105 kHz, consistent with 19.2 MHz XO / internal division), proving the PP tearcheck / VSYNC counter clock domain is running. (The MDP core clock itself was independently confirmed at 171,428,571 Hz via C1/C2 clock readback).
 
 ### What Remained Blocked
 Despite exact alignment with the working Keyaki TWRP configuration (`SYNC_CONFIG_VSYNC=0x00180093`, `HEIGHT=0xFFF0`, `START_POS=4`, `WRCOUNT=9`), `PP_LINE` never advanced past 0.
