@@ -22,14 +22,14 @@ H20,PP,PP0 is the wrong ping-pong,DISPROVEN,2,frame-start audit,DT index 0,0x009
 H21,PP,A normal one-shot PP register write is missing,DISPROVEN,2,frame-start audit,intf_cmd tearcheck,XNU image matches hw_vsync_mode false,HIGH,no,
 H22,TE,Physical TE pulses are present on GPIO10,DISPROVEN,4,9 and 11E preamble,GPIO10 sample,0 transitions,HIGH,no,
 H23,TE,Physical TE is mandatory for the timing counter,DISPROVEN,4,10 and 11D-B,bit 20 clear,counter still runs,HIGH,no,
-H24,TE,Internal TE image is sufficient to release pixels,STILL_OPEN,0,11D-B,bit 20 comment,PP_LINE stayed 0,LOW,yes,source does not say bit 20 gates one-shot pixels
+H24,TE,Internal TE image is sufficient to release pixels,DISPROVEN,4,C1 and G4,PP0 tearcheck,PP_LINE stayed 0 under internal TE; external TE required by hardware,HIGH,no,
 H25,Clock,VSYNC and MDP core are the same clock,DISPROVEN,2,resource audit,mmcc-msm8996.c,separate CBCR addresses,HIGH,no,
 H26,Clock,DSI byte pixel or escape clock is off at kickoff,DISPROVEN,3,M3 and resource audit,CBCR,branches left enabled,HIGH,no,
-H27,Clock,MDP core source and rate are a valid operating point,STILL_OPEN,1,resource audit,mdp_clk_src,CBCR enabled rate never read,MEDIUM,yes,11E did not sample it
+H27,Clock,MDP core source and rate are a valid operating point,DISPROVEN,4,C1,CFG_RCGR 0x506,Canonical 171428571 Hz proven and locked,HIGH,no,
 H28,Bus,Interconnect vote is absent in XNU,PROVEN,2,resource audit,perf_update_bus,no XNU call,HIGH,no,absence is proven; effect is not
 H29,Bus,Missing vote is why PP_LINE stays 0,STILL_OPEN,0,resource audit,no silicon alias,UNOBSERVABLE,LOW,yes,do not invent a proxy
-H30,VBIF,QoS program differs from Sony 1 2 2 2,STILL_OPEN,1,pipe.c legacy remap,never read,MEDIUM,yes,11E reads were not executed
-H31,VBIF,XIN1 is halted before kickoff,INSUFFICIENT_EVIDENCE,1,halt is suspend path,XNU never writes halt,LOW,yes,
+H30,VBIF,QoS program differs from Sony 1 2 2 2,DISPROVEN,4,C1 and C2,VBIF MMIO readback,QOS1=0x05555555 QOS2=0x0aaaaaaa QOS3=0x0fffffff matches Sony,HIGH,no,
+H31,VBIF,XIN1 is halted before kickoff,DISPROVEN,4,C1 and C2,XIN_HALT readback,XIN_HALT0=0 XIN_HALT1=0x3ffd0000 AXI_HALT1=0 unhalted,HIGH,no,
 H32,Fetch,AXI framebuffer fetch occurred,STILL_OPEN,0,resource audit,no beat counter,CURRENT_SRC latch only,LOW,yes,do not answer from the latch
 H33,PP,PP issued a DSI request,STILL_OPEN,0,request audit,no request-issued bit,line and done stayed 0,LOW,yes,zeros are not proof of absence
 H34,DSI,DSI rejected a frame,STILL_OPEN,0,11D-B,busy and done stayed 0,not a rejection bit,LOW,yes,
@@ -39,3 +39,7 @@ H37,SMMU,IOMMU attach is required,NOT_APPLICABLE,2,SMMU bypass,DIRECT_PA_SAFE,pr
 H38,11E,11E shows the core clock or VBIF is invalid,DISPROVEN,1,11E host.txt,no R11E_SAMPLE,abort before PASS,HIGH,no,do not use as negative evidence
 H39,Panel,Keyaki on-command order matches XNU,STILL_OPEN,2,keyaki.dts:1771,TEON DISPON then post-on SLPOUT,XNU sends SLPOUT first,LOW,yes,downstream of the current gate
 H40,11E,Reset cause inside ml_io_map_unmappable,INSUFFICIENT_EVIDENCE,1,git diff 5600ef8 e869829,map call unchanged,no byte after the map line,LOW,yes,
+H41,TE,Physical TE edge reaches PP0 tearcheck in XNU,DISPROVEN,4,F1,134.5ms telemetry,0 backward jumps 0 RD_PTR free-running counter over 8 frames,HIGH,no,HW_PROVEN
+H42,TE,TLMM or MMCC TE route component missing,DISPROVEN,4,F1 audit,TLMM GPIO10 and VSYNC CBCR,GPIO10=0x5 VSYNC_CBCR=0x1 bit-exact with TWRP,HIGH,no,
+H43,Panel,DDIC active TE pulse emission present after cold reset,DISPROVEN,4,F1 preamble,GPIO10 sample,29912 samples constant LOW 0 transitions,HIGH,no,HW_PROVEN
+H44,Panel,Continuous splash handoff maintains DDIC state,PROVEN,3,TWRP/LK audit,console-ramoops,LK keeps panel alive; cold reset in XNU clears volatile state,HIGH,no,
