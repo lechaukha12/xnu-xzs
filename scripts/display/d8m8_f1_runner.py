@@ -82,8 +82,9 @@ def classify_f1(prekick, kickoff, boot_fault):
 
     has_te_discontinuity = (bjumps is not None and bjumps != "0")
     has_rd_ptr_periodic = (rd_cnt is not None and rd_cnt != "0")
+    has_line_movement = (line_max > 0)
 
-    if has_te_discontinuity or has_rd_ptr_periodic:
+    if has_te_discontinuity or has_rd_ptr_periodic or has_line_movement:
         return "F1-TE-A"
     return "F1-TE-B"
 
