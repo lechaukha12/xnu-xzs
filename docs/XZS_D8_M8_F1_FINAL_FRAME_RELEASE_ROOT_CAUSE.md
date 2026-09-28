@@ -26,7 +26,7 @@
 | **DSI_MDP_BUSY** | **NO** (`DSI_BUSY = 0`) |
 | **CMD_MDP_DONE** | **NO** (`CMD_MDP_DONE = 0`) |
 | **FIRST_HW_PROVEN_DIVERGENCE** | Absence of physical TE edge at PP0 tearcheck input |
-| **ROOT_CAUSE_STATUS** | **HW_PROVEN** (TE absence proven; upstream DDIC trigger narrowed) |
+| **ROOT_CAUSE_STATUS** | **HW_PROVEN** (TE absence at PP0 proven; upstream DDIC state loss is HIGH_CONFIDENCE until F2 A/B) |
 | **ONE_CHANGE_CORRECTION_READY** | **NO** (No source-backed single DCS command exists in DTS; requires reverse-engineering LK init or continuous splash handoff) |
 | **CORRECTION_PERFORMED** | **NO** |
 | **CORRECTION_RESULT** | **N/A** |

@@ -43,3 +43,7 @@ H41,TE,Physical TE edge reaches PP0 tearcheck in XNU,DISPROVEN,4,F1,134.5ms tele
 H42,TE,TLMM or MMCC TE route component missing,DISPROVEN,4,F1 audit,TLMM GPIO10 and VSYNC CBCR,GPIO10=0x5 VSYNC_CBCR=0x1 bit-exact with TWRP,HIGH,no,
 H43,Panel,DDIC active TE pulse emission present after cold reset,DISPROVEN,4,F1 preamble,GPIO10 sample,29912 samples constant LOW 0 transitions,HIGH,no,HW_PROVEN
 H44,Panel,Continuous splash handoff maintains DDIC state,PROVEN,3,TWRP/LK audit,console-ramoops,LK keeps panel alive; cold reset in XNU clears volatile state,HIGH,no,
+H45,Panel,Sony LK contains proprietary vendor DCS init commands,DISPROVEN,3,aboot.img audit,mdss_dsi_cmds_send call sites,commands 100% Device Tree driven,HIGH,no,
+H46,Panel,In-cell touch controller unpowered/in reset suppresses DDIC timing and TE,PROVEN,4,F2 hardware A/B,aboot touch reset and keyaki.dts,touch power/reset brings DDIC timing out of suspend,HIGH,no,HW_PROVEN
+H47,TE,In-cell touch power/reset restores physical TE pulses to PP0 in XNU,PROVEN,4,F2 telemetry,f2-panel-state-ab,PP0_RD_PTR_COUNT=8996 vs 0 in F1 and MDP_INTR=0x00011000,HIGH,no,HW_PROVEN
+H48,PP,Physical TE pulse arrival alone releases PP0 line counter,DISPROVEN,4,F2 telemetry,f2-panel-state-ab,PP_LINE=0 despite active RD_PTR and TE pulses,HIGH,no,HW_PROVEN
