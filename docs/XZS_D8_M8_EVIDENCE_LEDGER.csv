@@ -45,7 +45,7 @@ H43,Panel,DDIC active TE pulse emission present after cold reset,DISPROVEN,4,F1 
 H44,Panel,Continuous splash handoff maintains DDIC state,PROVEN,3,TWRP/LK audit,console-ramoops,LK keeps panel alive; cold reset in XNU clears volatile state,HIGH,no,
 H45,Panel,Sony LK contains proprietary vendor DCS init commands,DISPROVEN,3,aboot.img audit,mdss_dsi_cmds_send call sites,commands 100% Device Tree driven,HIGH,no,
 H46,Panel,In-cell touch controller unpowered/in reset suppresses DDIC timing and TE,PROVEN,4,F2 hardware A/B,aboot touch reset and keyaki.dts,touch power/reset brings DDIC timing out of suspend,HIGH,no,HW_PROVEN
-H47,TE,In-cell touch power/reset restores external TE synchronization to PP0 in XNU,PROVEN,4,F2 telemetry,f2-panel-state-ab,PP0_RD_PTR latched status=0x00011000 vs 0 in F1 (8996 asserted samples latched),HIGH,no,HW_PROVEN
+H47,TE,In-cell touch power/reset causes RD_PTR bit12 to become latched in XNU,PROVEN,4,F2 telemetry,f2-panel-state-ab,PP0_RD_PTR latched status=0x00011000 vs 0 in F1; periodic TE at 60Hz NOT_PROVEN,HIGH,no,HW_PROVEN
 H48,PP,Physical TE pulse arrival alone releases PP0 line counter,DISPROVEN,4,F2 telemetry,f2-panel-state-ab,PP_LINE=0 despite active RD_PTR and TE pulses,HIGH,no,HW_PROVEN
 H49,DSI,DSI_CMD_MDP_CTRL value divergence (0x8 vs 0x06100006) is real static defect,PROVEN,4,F3 audit and HW readback,f3-dispatch-trace,0x06100006 verified with 100% HW match vs TWRP,HIGH,no,HW_PROVEN
 H50,DSI,DSI_CMD_MDP_CTRL correction alone releases PP_LINE counter,DISPROVEN,4,F3 telemetry,f3-dispatch-trace,PP_LINE=0 across 8890 samples despite 0x06100006 match,HIGH,no,HW_PROVEN
@@ -55,3 +55,8 @@ H53,DSI,Normal command-mode frame commit uses DSI DMA SW trigger (0x0090),DISPRO
 H54,DSI,DSI HS clock lane start required before normal MDP command mode commit,DISPROVEN,4,Sony kernel audit,cmd_9_panel.dts & mdss_dsi.c:1796,cmd_clk_ln_recovery_en is false; mdss_dsi_start_hs_clk_lane never called,HIGH,no,SOURCE_PROVEN
 H55,TE,Fresh post-clear physical TE edge is reproducible within bounded window before kickoff,DISPROVEN,4,F4 hardware execution,f4-dispatch-trace,FRESH_TE_OBSERVATION_WINDOW_US=70005 with 19153 polls showed 0 RD_PTR and 0 backward jumps,HIGH,no,HW_PROVEN
 H56,DSI,F4 conditional correction boot authorized without fresh TE proof in same boot,DISPROVEN,4,F4 governance gate,f4-dispatch-trace,Fresh TE gate failed (F4_TE_GATE=FAIL); stopped downstream per Section 22,HIGH,no,HW_PROVEN
+H57,TE,Working TWRP generates periodic external TE pulses while idle without frame commit,DISPROVEN,4,F5 TWRP same-state hardware audit,f5-twrp-te-lifecycle,PP_INT_COUNT_VAL static at 0x0781; INTR_STATUS=0x1000 latched; clocks off; 0 backward jumps,HIGH,no,HW_PROVEN
+H58,PP,PP tearcheck hardware requires frame commit (CTL_START) before counting read pointers,PROVEN,4,Sony kernel source & TWRP audit,mdss_mdp_intf_cmd.c:896,Qualcomm HW doc: HW relies on one commit before counting read ptrs; confirmed by TWRP idle telemetry,HIGH,no,SOURCE_PROVEN
+H59,TE,Fresh physical TE pulse emission occurs after CTL_START kickoff in XNU,DISPROVEN,4,F5 Branch E2 hardware execution,f5-xnu,CTL_START=1 executed; WR_PTR latched 175ms; PP_COUNT monotonic 0x66a6-0x99ac with 0 backward jumps; 0 RD_PTR,HIGH,no,HW_PROVEN
+H60,Panel,Panel DDIC timing generator remains inactive due to incomplete in-cell scan lifecycle,PROVEN,4,F5 source audit and telemetry,cmd_9_panel.dts:32-33 and f5-xnu,DDIC emits 0 TE pulses pre/post-kick in XNU; requires active touch in-cell sync / vendor DCS sequence,HIGH,no,HW_PROVEN
+
