@@ -17,7 +17,7 @@
 | **Physical TE Pulses at PP0** | **RESTORED** (`PP0_RD_PTR_COUNT = 8996` vs `0` in F1) | **YES — HW_PROVEN** |
 | **PP0 Ping-Pong Line Movement** | `PP_LINE = 0`, `PP_OUT = 0` | HW_PROVEN |
 | **Pipeline Stage Reached** | `PP0_RD_PTR_TRIGGERED` (Interrupt `0x00011000` Active) | HW_PROVEN |
-| **Root-Cause Classification** | `DDIC_VENDOR_INIT_ROOT_CAUSE_HW_PROVEN` | HW_PROVEN |
+| **Root-Cause Classification** | `INCELL_TOUCH_PREREQUISITE_CAUSAL_TO_TE_RESTORATION = YES — HW_PROVEN` (`F2_ROOT_CAUSE = MISSING_INCELL_TOUCH_POWER_RESET_PREREQUISITE`) | HW_PROVEN |
 | **Downstream Status** | `TE_ROOT_CAUSE_FIXED = YES`, `PP_FRAME_RELEASE_STILL_BLOCKED = YES` | HW_PROVEN |
 
 ---
@@ -183,11 +183,13 @@ Exactly ONE functional correction boot was performed via RAM boot (`fastboot -s 
 ### 8.1 Resolution of the TE Enigma
 The data demonstrates an immediate, qualitative hardware divergence between F1 and F2:
 - In F1, `PP0_RD_PTR_COUNT` was stubbornly **0**. The read pointer never fired because no synchronization pulses arrived from the panel.
-- In F2, upon powering GPIO 50 and releasing GPIO 89, `PP0_RD_PTR_COUNT` jumped to **8,996** (100% of poll iterations), and MDP interrupt status registered `0x00011000` (bit 12: RD_PTR asserted).
+- In F2, upon powering GPIO 50 and releasing GPIO 89, `PP0_RD_PTR_COUNT` jumped to **8,996** (asserted on 100% of poll iterations), and MDP interrupt status registered `0x00011000` (bit 12: RD_PTR asserted, bit 16: WR_PTR asserted).
+- **Semantics Audit**: The polling loop in `xzs_d8m8_r11db_observe` sampled `0x00901014` (`MDP_INTR_STATUS`) without an in-loop clear to `0x00901018`. Thus, `8996` represents `RD_PTR_ASSERTED_SAMPLE_COUNT = 8996` across the 174.8 ms window with `RD_PTR_STATUS_LATCHED = YES`. While `RD_PTR_DISTINCT_EVENT_COUNT = UNKNOWN` due to absence of per-sample interrupt clearance, the qualitative delta against F1 (where bit 12 was strictly 0 across all 5365 samples) is decisive.
 - This proves that **physical synchronization edges from the Synaptics DDIC are now successfully arriving at the SoC and triggering PP0's read pointer**!
 
 ```text
 DID_PANEL_STATE_CORRECTION_RESTORE_TE = YES — HW_PROVEN
+INCELL_TOUCH_PREREQUISITE_CAUSAL_TO_TE_RESTORATION = YES — HW_PROVEN
 TE_ROOT_CAUSE_FIXED = YES
 ```
 

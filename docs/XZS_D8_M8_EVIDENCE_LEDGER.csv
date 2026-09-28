@@ -47,3 +47,6 @@ H45,Panel,Sony LK contains proprietary vendor DCS init commands,DISPROVEN,3,aboo
 H46,Panel,In-cell touch controller unpowered/in reset suppresses DDIC timing and TE,PROVEN,4,F2 hardware A/B,aboot touch reset and keyaki.dts,touch power/reset brings DDIC timing out of suspend,HIGH,no,HW_PROVEN
 H47,TE,In-cell touch power/reset restores physical TE pulses to PP0 in XNU,PROVEN,4,F2 telemetry,f2-panel-state-ab,PP0_RD_PTR_COUNT=8996 vs 0 in F1 and MDP_INTR=0x00011000,HIGH,no,HW_PROVEN
 H48,PP,Physical TE pulse arrival alone releases PP0 line counter,DISPROVEN,4,F2 telemetry,f2-panel-state-ab,PP_LINE=0 despite active RD_PTR and TE pulses,HIGH,no,HW_PROVEN
+H49,DSI,DSI_CMD_MDP_CTRL value divergence (0x8 vs 0x06100006) is real static defect,PROVEN,4,F3 audit and HW readback,f3-dispatch-trace,0x06100006 verified with 100% HW match vs TWRP,HIGH,no,HW_PROVEN
+H50,DSI,DSI_CMD_MDP_CTRL correction alone releases PP_LINE counter,DISPROVEN,4,F3 telemetry,f3-dispatch-trace,PP_LINE=0 across 8890 samples despite 0x06100006 match,HIGH,no,HW_PROVEN
+H51,DSI,PP_LINE line advancement is gated by DSI Host command engine admission handshake,PROVEN,4,Sony source and F3 telemetry,mdss_dsi_host.c and f3-dispatch-trace,DSI_MDP_BUSY=0 stalls Ping-Pong line buffer release,HIGH,no,HW_PROVEN
