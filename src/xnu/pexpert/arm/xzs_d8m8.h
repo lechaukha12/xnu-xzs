@@ -192,9 +192,9 @@ xzs_d8m8_panel_prepare(void)
 		return -1;
 	}
 
-	xzs_diag_emit("DCS_SEQUENCE=TEON -> DISPON -> SLPOUT\n");
+	xzs_diag_emit("DCS_SEQUENCE=TEON -> SLPOUT -> DISPON (F9 Sony LK Bootstrap Order)\n");
 
-	/* 2. DCS Tear On (0x35 0x00) */
+	/* 1. DCS Tear On (0x35 0x00) */
 	xzs_diag_emit("  [CMD 1/3] Transmitting DCS Tear On (0x35 0x00)...\n");
 	rc = xzs_d8m6_transmit_cmd(&s_cmd_teon, 0);
 	g_d8m6_counters.teon_count++;
@@ -203,7 +203,7 @@ xzs_d8m8_panel_prepare(void)
 	bool teon_ok = (rc == 0) && (teon_ack == 0) && (teon_to == 0);
 	xzs_diag_emit("TEON_ACK="); xzs_diag_emit(teon_ok ? "PASS\n" : "FAIL\n");
 	if (!teon_ok) {
-		xzs_diag_emit("!!! [F7] TEON failed!\n");
+		xzs_diag_emit("!!! [F9] TEON failed!\n");
 		g_m8_panel_ready = false;
 		xzs_d8m6_panel_shutdown();
 		return -2;
@@ -211,25 +211,8 @@ xzs_d8m8_panel_prepare(void)
 	g_m8_teon_sent = true;
 	xzs_diag_emit("TEON_SENT=yes\n");
 
-	/* 3. DCS Display On (0x29) */
-	xzs_diag_emit("  [CMD 2/3] Transmitting DCS Display On (0x29)...\n");
-	rc = xzs_d8m6_transmit_cmd(&s_cmd_dispon, 0);
-	g_d8m6_counters.dispon_count++;
-	uint32_t dispon_ack = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
-	uint32_t dispon_to  = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
-	bool dispon_ok = (rc == 0) && (dispon_ack == 0) && (dispon_to == 0);
-	xzs_diag_emit("DISPON_ACK="); xzs_diag_emit(dispon_ok ? "PASS\n" : "FAIL\n");
-	if (!dispon_ok) {
-		xzs_diag_emit("!!! [F7] DISPON failed!\n");
-		g_m8_panel_ready = false;
-		xzs_d8m6_panel_shutdown();
-		return -3;
-	}
-	g_m8_dispon_sent = true;
-	xzs_diag_emit("DISPON_SENT=yes\n");
-
-	/* 4. DCS Sleep Out (0x11) + 120 ms */
-	xzs_diag_emit("  [CMD 3/3] Transmitting DCS Sleep Out (0x11) + 120 ms...\n");
+	/* 2. DCS Sleep Out (0x11) + 120 ms */
+	xzs_diag_emit("  [CMD 2/3] Transmitting DCS Sleep Out (0x11) + 120 ms...\n");
 	rc = xzs_d8m6_transmit_cmd(&s_cmd_slpout, 0);
 	g_d8m6_counters.slpout_count++;
 	uint32_t slpout_ack = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
@@ -237,13 +220,30 @@ xzs_d8m8_panel_prepare(void)
 	bool slpout_ok = (rc == 0) && (slpout_ack == 0) && (slpout_to == 0);
 	xzs_diag_emit("SLPOUT_ACK="); xzs_diag_emit(slpout_ok ? "PASS\n" : "FAIL\n");
 	if (!slpout_ok) {
-		xzs_diag_emit("!!! [F7] SLPOUT failed!\n");
+		xzs_diag_emit("!!! [F9] SLPOUT failed!\n");
 		g_m8_panel_ready = false;
 		xzs_d8m6_panel_shutdown();
 		return -4;
 	}
 	g_m8_slpout_sent = true;
 	xzs_diag_emit("SLPOUT_SENT=yes\n");
+
+	/* 3. DCS Display On (0x29) */
+	xzs_diag_emit("  [CMD 3/3] Transmitting DCS Display On (0x29)...\n");
+	rc = xzs_d8m6_transmit_cmd(&s_cmd_dispon, 0);
+	g_d8m6_counters.dispon_count++;
+	uint32_t dispon_ack = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
+	uint32_t dispon_to  = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
+	bool dispon_ok = (rc == 0) && (dispon_ack == 0) && (dispon_to == 0);
+	xzs_diag_emit("DISPON_ACK="); xzs_diag_emit(dispon_ok ? "PASS\n" : "FAIL\n");
+	if (!dispon_ok) {
+		xzs_diag_emit("!!! [F9] DISPON failed!\n");
+		g_m8_panel_ready = false;
+		xzs_d8m6_panel_shutdown();
+		return -3;
+	}
+	g_m8_dispon_sent = true;
+	xzs_diag_emit("DISPON_SENT=yes\n");
 
 	/* Section 10: Post-Panel Stability Gate */
 	xzs_diag_emit("F7_PANEL_PREPARE_STABLE=YES\n");
@@ -1960,6 +1960,9 @@ xzs_d8m8_stream_config(void)
 	/* Step 3: Enable tear check */
 	xzs_m8_write_reg("PP0_TEAR_CHECK_EN ", 0x00971000u, 0x00000001u, 0x00000001u, false);
 
+	/* Step 3b: Enable PingPong 0 Autorefresh per Sony LK 0xaa01cb28 and mdss_mdp_intf_cmd.c:893 */
+	xzs_m8_write_reg("PP0_AUTOREFRESH   ", 0x00971030u, 0x80000001u, 0x80000001u, false);
+
 	/* DSI0 Host MDP Stream: Restored to 0x06100006 (MSM8996 MDP command mode stream enable + packing/interleave, matching TWRP golden) */
 	xzs_m8_write_reg("DSI_CMD_MDP_CTRL  ", 0x00994040u, 0x06100006u, 0x06100006u, false);
 
@@ -2283,7 +2286,7 @@ xzs_d8m8_prekick_status(void)
 	                    (pp0_start_pos == 0x00000004u) &&
 	                    (pp0_rd_ptr_irq == 0x00000781u) &&
 	                    (pp0_wr_ptr_irq == 0x00000000u) &&
-	                    (pp0_autorefresh == 0x00000000u);
+	                    ((pp0_autorefresh == 0x00000000u) || (pp0_autorefresh == 0x80000001u));
 	bool wrcount_consistent = (pp0_sync_wrcount == (pp0_start_pos + (pp0_sync_thresh & 0xffffu) + 1u));
 
 	bool ready = g_m8_panel_ready && wrcount_consistent &&
@@ -2459,7 +2462,7 @@ xzs_d8m8_kickoff(void)
 	                    (pp0_start_pos == 0x00000004u) &&
 	                    (pp0_rd_ptr_irq == 0x00000781u) &&
 	                    (pp0_wr_ptr_irq == 0x00000000u) &&
-	                    (pp0_autorefresh == 0x00000000u);
+	                    ((pp0_autorefresh == 0x00000000u) || (pp0_autorefresh == 0x80000001u));
 	bool wrcount_consistent = (pp0_sync_wrcount == (pp0_start_pos + (pp0_sync_thresh & 0xffffu) + 1u));
 
 	if (!pp_timing_ok) {
