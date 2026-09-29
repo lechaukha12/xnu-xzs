@@ -477,6 +477,14 @@ xzs_d8p2_run(int mode)
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_ENABLE_CTL, lab_dis);
 	xzs_d8p2_sec_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB, LAB_REG_LCD_AMOLED_SEL, lab_mode);
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_VOLTAGE, lab_v);
+	/* Keyaki DT: somc,qpnp-lab-limit-maximum-current = <0xc8> (200 mA = code 0) */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_CURRENT_LIMIT, 0x00u);
+	/* Keyaki DT: somc,qpnp-lab-max-precharge-time = <0x12c> (300 us = 0x83) */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_PRECHARGE_CTL, 0x83u);
+	/* Keyaki DT: somc,qpnp-lab-soft-start = <0x320> (800 us = 0x03) */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_SOFT_START_CTL, 0x03u);
+	/* Keyaki DT: somc,qpnp-lab-pull-down-enable; somc,qpnp-lab-full-pull-down; */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_PD_CTL, 0x81u);
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_MODULE_RDY, lab_rdy);
 
 	/* IBB configuration:
@@ -493,6 +501,10 @@ xzs_d8p2_run(int mode)
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB + IBB_REG_ENABLE_CTL, ibb_dis);
 	xzs_d8p2_sec_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB, IBB_REG_LCD_AMOLED_SEL, ibb_mode);
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB + IBB_REG_VOLTAGE, ibb_v);
+	/* Keyaki DT: somc,qpnp-ibb-limit-maximum-current = <0x320> (800 mA = code 3) */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB + IBB_REG_CURRENT_LIMIT, 0x03u);
+	/* Keyaki DT: somc,qpnp-ibb-pull-down-enable; somc,qpnp-ibb-full-pull-down; */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB + IBB_REG_PD_CTL, 0x81u);
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB + IBB_REG_MODULE_RDY, ibb_rdy);
 
 	/* Read back and verify */
