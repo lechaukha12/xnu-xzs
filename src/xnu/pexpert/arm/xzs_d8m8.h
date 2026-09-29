@@ -1633,7 +1633,7 @@ xzs_m8_crc32(const uint8_t *data, size_t len)
 	size_t words = len / 4;
 	for (size_t i = 0; i < words; i++) {
 		crc = __builtin_arm_crc32w(crc, p32[i]);
-		if ((i & 0x1ffff) == 0) {
+		if ((i & 0x3fff) == 0) {
 			xzs_watchdog_pet();
 		}
 	}
@@ -2464,6 +2464,9 @@ xzs_d8m8_kickoff(void)
 	uint64_t te_gate_deadline = te_gate_start + (70000ULL * frq) / 1000000ULL; /* 70 ms */
 
 	while (1) {
+		if ((fresh_te_poll_iterations & 0x1ff) == 0) {
+			xzs_watchdog_pet();
+		}
 		uint64_t cur_cycles = 0;
 		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(cur_cycles));
 		uint32_t cur_intr = d8p1_read32(0x00901014u);
