@@ -58,6 +58,7 @@ extern vm_offset_t ml_static_vtop(vm_offset_t va);
 /* DSI Packet Data Types */
 #define DSI_DCS_SHORT_WRITE_0_PARAM         0x05u
 #define DSI_DCS_SHORT_WRITE_1_PARAM         0x15u
+#define DSI_GENERIC_LONG_WRITE              0x29u
 #define DSI_DCS_LONG_WRITE                  0x39u
 
 /* Command Descriptor */
@@ -95,6 +96,98 @@ static const uint8_t s_payload_teon[2]    = { 0x35, 0x00 };
 static const uint8_t s_payload_dispon[1]  = { 0x29 };
 static const uint8_t s_payload_dispoff[1] = { 0x28 };
 static const uint8_t s_payload_slpin[1]   = { 0x10 };
+
+/* Authentic Sony Keyaki DT On-Command Payloads (keyaki.dts:1872) */
+static const uint8_t s_payload_cmd1_b0_00[2]  = { 0xb0, 0x00 };
+static const uint8_t s_payload_cmd2_d6_01[2]  = { 0xd6, 0x01 };
+static const uint8_t s_payload_cmd3_c4[3]     = { 0xc4, 0x70, 0x22 };
+static const uint8_t s_payload_cmd4_c6[21]    = { 0xc6, 0x53, 0x2e, 0x2e, 0x05, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x04, 0x10, 0x06 };
+static const uint8_t s_payload_cmd5_ec[14]    = { 0xec, 0x64, 0xdc, 0xec, 0x3b, 0x52, 0x00, 0x0b, 0x0b, 0x13, 0x15, 0x68, 0x0b, 0xb5 };
+static const uint8_t s_payload_cmd6_b0_03[2]  = { 0xb0, 0x03 };
+static const uint8_t s_payload_cmd8_madctl[2] = { 0x36, 0x00 };
+static const uint8_t s_payload_cmd9_colmod[2] = { 0x3a, 0x77 };
+static const uint8_t s_payload_cmd10_caset[5] = { 0x2a, 0x00, 0x00, 0x04, 0x37 };
+static const uint8_t s_payload_cmd11_paset[5] = { 0x2b, 0x00, 0x00, 0x07, 0x7f };
+static const uint8_t s_payload_cmd12_stesl[3] = { 0x44, 0x00, 0x00 };
+
+/* Master Command Table */
+static const struct xzs_d8m6_cmd s_cmd_dt_on_1 = {
+	.name = "CMD1 (B0 00 Protect Unlock)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd1_b0_00,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_2 = {
+	.name = "CMD2 (D6 01 Output Ctrl)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd2_d6_01,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_3 = {
+	.name = "CMD3 (C4 70 22 Timing Gen)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 3,
+	.payload = s_payload_cmd3_c4,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_4 = {
+	.name = "CMD4 (C6 Timing Waveforms)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 21,
+	.payload = s_payload_cmd4_c6,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_5 = {
+	.name = "CMD5 (EC Scan Gen Bias)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 14,
+	.payload = s_payload_cmd5_ec,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_6 = {
+	.name = "CMD6 (B0 03 Protect Lock)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd6_b0_03,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_8 = {
+	.name = "CMD8 (MADCTL 0x36 0x00)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd8_madctl,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_9 = {
+	.name = "CMD9 (COLMOD 0x3a 0x77 24bpp)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd9_colmod,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_10 = {
+	.name = "CMD10 (CASET 0x2a 0..1079)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 5,
+	.payload = s_payload_cmd10_caset,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_11 = {
+	.name = "CMD11 (PASET 0x2b 0..1919)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 5,
+	.payload = s_payload_cmd11_paset,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_12 = {
+	.name = "CMD12 (STESL 0x44 scanline 0)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 3,
+	.payload = s_payload_cmd12_stesl,
+	.post_wait_us = 0,
+};
 
 /* Master Command Table */
 static const struct xzs_d8m6_cmd s_cmd_slpout = {
@@ -177,7 +270,7 @@ xzs_d8m6_encode_packet(const struct xzs_d8m6_cmd *cmd, uint8_t *buf, size_t buf_
 		buf[2] = cmd->dtype & 0x3fu;
 		buf[3] = 0x80u; /* Last packet */
 		return 4;
-	} else if (cmd->dtype == DSI_DCS_LONG_WRITE) {
+	} else if (cmd->dtype == DSI_DCS_LONG_WRITE || cmd->dtype == DSI_GENERIC_LONG_WRITE) {
 		/*
 		 * Long Write Packet Format (8+ bytes, 4-byte aligned):
 		 *   data[0] = wc & 0xFF
