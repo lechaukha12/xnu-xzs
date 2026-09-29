@@ -716,6 +716,13 @@ struct xzs_f1_te_metrics {
 	bool seen_dsi_mdp_done;
 	uint32_t poll_iterations;
 	uint64_t observation_window_us;
+	/* F8 GPIO10 Physical Pad Tracking */
+	uint32_t gpio10_transitions;
+	uint32_t gpio10_high_samples;
+	uint32_t gpio10_low_samples;
+	uint32_t gpio10_prev_val;
+	uint32_t gpio10_min;
+	uint32_t gpio10_max;
 };
 static struct xzs_f1_te_metrics g_f1_metrics;
 
@@ -743,6 +750,13 @@ xzs_d8m8_r11db_reset(void)
 	g_f1_metrics.seen_dsi_mdp_done = false;
 	g_f1_metrics.poll_iterations = 0;
 	g_f1_metrics.observation_window_us = 0;
+	g_f1_metrics.gpio10_transitions = 0;
+	g_f1_metrics.gpio10_high_samples = 0;
+	g_f1_metrics.gpio10_low_samples = 0;
+	uint32_t initial_te = xzs_d8m5_gpio_read_in(GPIO_TE_NUM);
+	g_f1_metrics.gpio10_prev_val = initial_te;
+	g_f1_metrics.gpio10_min = initial_te;
+	g_f1_metrics.gpio10_max = initial_te;
 
 	g_r11db_count = 0;
 	g_r11db_gate_count = 0;
@@ -889,6 +903,20 @@ xzs_d8m8_r11db_observe(uint64_t cycles, uint64_t frq)
 		if (delta < g_f1_metrics.largest_neg_delta) g_f1_metrics.largest_neg_delta = delta;
 	}
 	g_f1_metrics.prev_pp_int_cnt = pp_count;
+
+	/* F8: High-frequency passive polling of GPIO10 physical pad */
+	uint32_t gpio10_pad = xzs_d8m5_gpio_read_in(GPIO_TE_NUM);
+	if (gpio10_pad == 1) {
+		g_f1_metrics.gpio10_high_samples++;
+	} else {
+		g_f1_metrics.gpio10_low_samples++;
+	}
+	if (gpio10_pad != g_f1_metrics.gpio10_prev_val) {
+		g_f1_metrics.gpio10_transitions++;
+		g_f1_metrics.gpio10_prev_val = gpio10_pad;
+	}
+	if (gpio10_pad < g_f1_metrics.gpio10_min) g_f1_metrics.gpio10_min = gpio10_pad;
+	if (gpio10_pad > g_f1_metrics.gpio10_max) g_f1_metrics.gpio10_max = gpio10_pad;
 
 	if ((intr & 0x00001000u) != 0) g_f1_metrics.rd_ptr_count++;
 	if ((intr & 0x00010000u) != 0) g_f1_metrics.wr_ptr_count++;
@@ -2910,6 +2938,15 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit(f7_fresh_rd_ptr ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
 	xzs_diag_emit("DID_DCS_ORDER_START_PP_FRAME=");
 	xzs_diag_emit((g_f1_metrics.max_pp_line > 0) ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
+
+	/* F8 Physical Pad Discriminator Metrics */
+	xzs_diag_emit("GPIO10_TRANSITIONS_POST_KICK="); xzs_d8m8_dec(g_f1_metrics.gpio10_transitions); xzs_diag_emit("\n");
+	xzs_diag_emit("GPIO10_HIGH_SAMPLES="); xzs_d8m8_dec(g_f1_metrics.gpio10_high_samples); xzs_diag_emit("\n");
+	xzs_diag_emit("GPIO10_LOW_SAMPLES="); xzs_d8m8_dec(g_f1_metrics.gpio10_low_samples); xzs_diag_emit("\n");
+	xzs_diag_emit("GPIO10_MIN="); xzs_d8m8_dec(g_f1_metrics.gpio10_min); xzs_diag_emit("\n");
+	xzs_diag_emit("GPIO10_MAX="); xzs_d8m8_dec(g_f1_metrics.gpio10_max); xzs_diag_emit("\n");
+	bool f8_physical_te = (g_f1_metrics.gpio10_transitions > 0);
+	xzs_diag_emit("PHYSICAL_TE_AT_GPIO10="); xzs_diag_emit(f8_physical_te ? "YES\n" : "NO\n");
 
 	uint64_t elapsed_us = g_f1_metrics.observation_window_us;
 	xzs_diag_emit("OBSERVATION_ELAPSED_US="); xzs_d8m8_dec(elapsed_us); xzs_diag_emit("\n");
