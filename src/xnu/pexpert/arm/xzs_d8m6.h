@@ -194,7 +194,7 @@ static const struct xzs_d8m6_cmd s_cmd_dt_on_12 = {
 /* Master Command Table */
 static const struct xzs_d8m6_cmd s_cmd_slpout = {
 	.name = "SLPOUT (Sleep Out 0x11)",
-	.dtype = DSI_DCS_LONG_WRITE,
+	.dtype = DSI_DCS_SHORT_WRITE_0_PARAM,
 	.dlen = 1,
 	.payload = s_payload_slpout,
 	.post_wait_us = 120000, /* 120 ms */
@@ -210,7 +210,7 @@ static const struct xzs_d8m6_cmd s_cmd_teon = {
 
 static const struct xzs_d8m6_cmd s_cmd_dispon = {
 	.name = "DISPON (Display On 0x29)",
-	.dtype = DSI_DCS_LONG_WRITE,
+	.dtype = DSI_DCS_SHORT_WRITE_0_PARAM,
 	.dlen = 1,
 	.payload = s_payload_dispon,
 	.post_wait_us = 0,      /* 0 ms */
@@ -680,13 +680,13 @@ xzs_d8m6_panel_power_up_to_idle(void)
 	xzs_diag_emit("  F11_RESET_RELEASED_IN_LP11=YES\n");
 
 	/* 7. In-Cell Touch Reset Sequence per somc,ewu-rst-seq = <0 2 1 5> -> LOW 2ms, HIGH 5ms */
-	xzs_diag_emit("  7. In-Cell Touch Reset Pulse in LP-11 (Low 2ms -> High 5ms -> settling 40ms)...\n");
+	xzs_diag_emit("  7. In-Cell Touch Reset Pulse in LP-11 (Low 2ms -> High 5ms -> settling 0ms per Panel 9)...\n");
 	xzs_d8m5_set_touch_reset_low();
 	xzs_d8p2_delay_us(2000); // 2 ms
 	xzs_d8m5_set_touch_reset_high();
 	xzs_d8p2_delay_us(5000); // 5 ms
-	/* somc,ewu-wait-after-touch-reset = <0x28> (40 ms) */
-	xzs_d8p2_delay_us(40000); // 40 ms
+	/* somc,ewu-wait-after-touch-reset = <0x00> (0 ms per keyaki.dts:1827) */
+	xzs_d8p2_delay_us(100); // 100 us safe pulse edge settling
 
 	if (xzs_d8m5_gpio_read_in(GPIO_TOUCH_RESET_NUM) == 0) {
 		xzs_diag_emit("!!! FAIL: GPIO89 failed to release HIGH!\n");
