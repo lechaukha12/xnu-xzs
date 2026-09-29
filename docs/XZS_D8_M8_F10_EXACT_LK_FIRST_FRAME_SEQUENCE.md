@@ -91,7 +91,8 @@ All display panel commands in Sony LK are extracted directly from the flattened 
 | **13** | `0x11` (SLPOUT) | DCS Short | `11 00 05 80` | 120 | Standard DCS Sleep Out (Starts internal DDIC oscillator) |
 | **Post** | `0x29` (DISPON) | DCS Short | `29 00 05 80` | 0 | Standard DCS Display On (Deferred to kickoff after `CTL_START`) |
 
-- **Proprietary Vendor Code**: `PROPRIETARY_VENDOR_DCS_PRESENT = NO`. The commands are 100% Device Tree driven; no undocumented binary routines exist in LK.
+- **Vendor-Specific DT Commands**: `VENDOR_SPECIFIC_DT_COMMANDS_PRESENT = YES` (Vendor commands `0xB0`, `0xD6`, `0xC4`, `0xC6`, `0xEC` recovered from DT path).
+- **Vendor Commands in LK Binary**: `HARDCODED_VENDOR_COMMANDS_IN_LK_BINARY = NO` (Commands are DT-provided, not hardcoded in `aboot.img`).
 - **F9 Vendor Init Wording**: `F9_VENDOR_INIT_WORDING = GENERIC_WORDING_ONLY`.
 
 ---
