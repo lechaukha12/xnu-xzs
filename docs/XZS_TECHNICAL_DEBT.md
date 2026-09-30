@@ -78,3 +78,14 @@ This document explicitly catalogs temporary bring-up compromises, architectural 
 * **Migration Plan / Remediation**:
   The `devfs_getattr` pointer-hardening bypass must be re-audited when XZSPlatform and the long-term platform abstraction are introduced.
   **Goal**: avoid carrying Xperia/MSM8996 bring-up exceptions as permanent, generic XNU-core behavior. Once platform crypto/entropy and long-term abstractions mature, investigate why `vm_kernel_addrhash()` stalls or move platform-specific exceptions into `XZSPlatform`.
+
+---
+
+### DISPLAY-DEBT-001: DSI DCS RX / Bus Turnaround (BTA) Readback Timeout
+* **Location**: `src/xnu/pexpert/arm/xzs_d8m8.h` (`xzs_d8m8_audit_ddic_state_f18`), `src/xnu/pexpert/arm/xzs_d8m4.h`
+* **Classification**: `NON-BLOCKING TECHNICAL DEBT`
+* **Nature**: MIPI DSI Bus Turnaround (BTA) requests (`DSI_CMD_DMA_CTRL` with BTA trigger) time out (`DSI_BTA_TIMEOUT = 0x00000100`) on the MSM8996 DSI v1.4 host when attempting to read back DCS registers (e.g. DDIC ID `0xDA`/`0xDB`/`0xDC`, power mode `0x0A`, MADCTL `0x0B`) from the Sharp display driver IC.
+* **Rationale**: BTA readback was originally investigated to audit DDIC sleep/wake status and OTP revisions. D8-M8.5 hardware proof demonstrated that forward DCS command transmission (`DSI_FORWARD_WRITE_PATH = HW_PROVEN`) and autonomous MDP5 frame scanout (`DSI_SCANOUT_PATH = HW_PROVEN`) function reliably without DCS readback.
+* **Risk / Impact**: Zero impact on visible scanout, video refresh, or framebuffer console rendering. Prevents software-based ESD detection, panel manufacture ID querying, and dynamic DDIC fault monitoring.
+* **Remediation Plan**: Revisit DSI PHY LP-RX calibration, timer thresholds (`DSI_LP_TIMER_CTRL`), and DSI host BTA timeout configurations when implementing dynamic panel power management (Phase D9).
+
