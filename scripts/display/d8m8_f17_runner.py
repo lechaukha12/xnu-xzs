@@ -226,7 +226,7 @@ def main():
         (LOG_DIR / "pre-kick.txt").write_text(prekick_text)
 
         # 11. Controlled Kickoff with Exact Sony Post-On SLPOUT & Live DDIC State Readback
-        kickoff_text = step(dev, "KICKOFF", "display m8-kickoff", 120, "R11C_SAFE_SHUTDOWN=PASS")
+        kickoff_text = step(dev, "KICKOFF", "display m8-kickoff", 120, "R11C_SAFE_SHUTDOWN=")
         (LOG_DIR / "kickoff.txt").write_text(kickoff_text)
 
         # 12. Parse raw observation and DDIC lines

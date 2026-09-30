@@ -103,7 +103,7 @@ static const struct dsi_host_reg_entry s_dsi_host_regs[] = {
 	{ "DSI_LANE_STATUS",                   0x0a8, 0x009940a8u, 0x00000000u, "QUALCOMM_MSM8996_DSI_SPEC" },
 	{ "DSI_LANE_CTRL",                     0x0ac, 0x009940acu, 0x00000000u, "QUALCOMM_MSM8996_DSI_SPEC" },
 	{ "DSI_LANE_SWAP_CTRL",                0x0b0, 0x009940b0u, 0x00000000u, "QUALCOMM_MSM8996_DSI_SPEC" },
-	{ "DSI_LP_TIMER_CTRL",                 0x0b8, 0x009940b8u, 0x00000000u, "QUALCOMM_MSM8996_DSI_SPEC" },
+	{ "DSI_LP_TIMER_CTRL",                 0x0b8, 0x009940b8u, 0xffffffffu, "QUALCOMM_MSM8996_DSI_SPEC" },
 	{ "DSI_HS_TIMER_CTRL",                 0x0bc, 0x009940bcu, 0x0000ffffu, "QUALCOMM_MSM8996_DSI_SPEC" },
 	{ "DSI_TIMEOUT_STATUS",                0x0c0, 0x009940c0u, 0x00000000u, "QUALCOMM_MSM8996_DSI_SPEC" },
 	{ "DSI_CLKOUT_TIMING_CTRL",            0x0c4, 0x009940c4u, 0x00001b2bu, "KEYAKI_PANEL_SOURCE" },
