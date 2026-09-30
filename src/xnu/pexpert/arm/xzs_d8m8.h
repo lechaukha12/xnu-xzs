@@ -238,15 +238,35 @@ xzs_d8m8_panel_prepare(void)
 	g_m8_dispon_sent = true;
 	xzs_diag_emit("DISPON_SENT=yes\n");
 
-	xzs_diag_emit("PANEL_PREPARE_SEQUENCE=PANEL_9_ON_COMMANDS_COMPLETE\n");
-	xzs_diag_emit("SLPOUT_DEFERRED_TO_KICKOFF=yes (Exact Sony LK First-Frame Sequence for Panel 9)\n");
-	xzs_diag_emit("F13_PANEL_PREPARE_STABLE=YES\n");
-
-	/* Sample physical TE after DCS sequence */
-	xzs_d8m8_sample_physical_te(50000u);
+	/* Command 3: SLPOUT (0x11, dtype 0x05, 120ms wait) per keyaki.dts:1772 post-panel-on-command */
+	uint64_t t_slpout = xzs_d8m5_read_cntvct();
+	uint64_t slpout_us = (t_slpout * 1000000ULL) / frq;
+	xzs_diag_emit("F14_SLPOUT_TX: timestamp_us="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
+	xzs_diag_emit("SLPOUT_TIMESTAMP_US="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
+	rc = xzs_d8m6_transmit_cmd(&s_cmd_slpout, 0);
+	g_d8m6_counters.slpout_count++;
+	uint32_t slpout_ack = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
+	uint32_t slpout_to  = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
+	bool slpout_ok = (rc == 0) && (slpout_ack == 0) && (slpout_to == 0);
+	xzs_diag_emit("SLPOUT_ACK="); xzs_diag_emit(slpout_ok ? "PASS\n" : "FAIL\n");
+	if (!slpout_ok) {
+		xzs_diag_emit("!!! [F14] SLPOUT failed!\n");
+		g_m8_panel_ready = false;
+		xzs_d8m6_panel_shutdown();
+		return -3;
+	}
+	g_m8_slpout_sent = true;
+	xzs_diag_emit("SLPOUT_SENT=yes\n");
 
 	/* 5. Restore DSI trigger control to MDP Command Mode trigger with external TE (0x80000004) */
 	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x80000004u);
+
+	xzs_diag_emit("PANEL_PREPARE_SEQUENCE=AUTHENTIC_PANEL_9_WAKE_COMPLETE\n");
+	xzs_diag_emit("F14_PANEL_PREPARE_STABLE=YES\n");
+	xzs_diag_emit("F13_PANEL_PREPARE_STABLE=YES\n");
+
+	/* Sample physical TE after DCS wake sequence (100 ms = ~6 frames at 60Hz) */
+	xzs_d8m8_sample_physical_te(100000u);
 
 	g_m8_panel_ready = true;
 	xzs_diag_emit("PANEL_READY=yes\n");
@@ -2692,27 +2712,7 @@ xzs_d8m8_kickoff(void)
 	d8p1_write32(0x0090201cu, 0x00000001u);
 	g_m8_ctl_start_count = 1;
 	g_m8_kickoff_count = 1;
-
-	/*
-	 * F13 EXACT SONY LK ORDER (Panel 9):
-	 * Post-panel-on-command (SLPOUT 0x11, dtype 0x05, wait 120ms) transmitted
-	 * immediately AFTER CTL_START=1 as specified in keyaki.dts:1772
-	 */
-	uint64_t t_slpout = xzs_d8m5_read_cntvct();
-	uint64_t slpout_us = (t_slpout * 1000000ULL) / frq;
-	xzs_diag_emit("F13_POST_ON_SLPOUT_TX: timestamp_us="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
-	xzs_diag_emit("SLPOUT_TIMESTAMP_US="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
-
-	int slpout_rc = xzs_d8m6_transmit_cmd(&s_cmd_slpout, 0);
-	g_d8m6_counters.slpout_count++;
-	g_m8_slpout_sent = true;
-	uint32_t slpout_ack = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
-	uint32_t slpout_to  = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
-	bool slpout_ok = (slpout_rc == 0) && (slpout_ack == 0) && (slpout_to == 0);
-	xzs_diag_emit("SLPOUT_ACK="); xzs_diag_emit(slpout_ok ? "PASS\n" : "FAIL\n");
-
-	/* Restore DSI trigger control to MDP Command Mode trigger with external TE (0x80000004) */
-	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x80000004u);
+	xzs_diag_emit("F14_KICKOFF_DISPATCH: CTL_START=1 armed to awake panel\n");
 
 	uint64_t t_obs = xzs_d8m5_read_cntvct();
 	uint64_t obs_us = (t_obs * 1000000ULL) / frq;
