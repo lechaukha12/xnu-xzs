@@ -251,5 +251,9 @@ Hardware execution session `artifacts/hw/d8m2-545398f/host.txt` on candidate `54
 Conclusion:
 D8-M2 acceptance criteria fully satisfied on physical silicon.
 Tag `xzs-d8-m2-complete` sealed at `545398f30d8fda592d4ca67ee867a016c2f37092`.
-D8-M3 is NOT STARTED.
+Display bring-up milestones through D8-M8.5 (First Visible Display) are now COMPLETE & SEALED on hardware (tag `xzs-d8-m8.5-complete`).
+Physical Sharp 1080p IPS LCD panel is verified illuminated with visible pixels across 3/3 fresh cold boots.
+Next active milestone: D8-M10 (Framebuffer Text Console / Interactive Shell Display).
+See `docs/XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md` and `docs/XZS_D8_M8_FINAL_RECONCILIATION.md`.
+
 

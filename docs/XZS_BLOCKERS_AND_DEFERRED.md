@@ -117,14 +117,11 @@ Status values: `ACTIVE_BLOCKER`, `DEFERRED`, `BYPASSED`, `RESOLVED`, `OBSOLETE`.
 | ID | ACTIVE-D8-002 |
 | AREA | display MDP scanout |
 | TITLE | PingPong0 to DSI command-mode transport / handshake boundary |
-| STATUS | DEFERRED |
+| STATUS | RESOLVED_IN_D8_M8_5 |
 | FIRST_SEEN | D8-M8 Retry #1 (`9154f24`), confirmed through Retry #10 (`0243572`) |
-| LAST_KNOWN_COMMIT | `02435720864946ba6aecfe4be21d400a75ff43ff` |
-| EVIDENCE | Framebuffer allocation (`0x98000000`), SSPP RGB0 config (1080x1920 XRGB8888, format/stride verified, active source address latched `0x98000000`), LM0 BASE routing, and CTL0 flush consumption (`0x00020048` -> 0) are proven on silicon. In Retry #10, Qualcomm software-TE / internal VSYNC override (`PP_SYNC_CONFIG_VSYNC=0x00080093`, height=2163) proved internal VSYNC generation: WR_PTR fired at 0 µs, RD_PTR fired at 10 ms (10,000 µs), internal counter cycled at ~16.56 ms. However, `PP0_LINE_COUNT=0`, `PP0_OUT_LINE_COUNT=0`, `PP0_DONE=no`, and `DSI_STREAM_ACTIVITY=no` across 100 ms of polling. In command mode with `DSI_TRIG_CTRL=0x80000004` (`mdp_trigger=NONE`), the DSI command engine does not autonomously launch packet transmission from hardware VSYNC without either `DSI_CMD_MODE_MDP_SW_TRIGGER` or configured hardware trigger, blocking PingPong scanout flow credit. See `docs/XZS_D8_M8_DEFERRED.md`. |
-| IMPACT | Native XNU cannot scan out framebuffer pixels to the physical display in command mode. Framebuffer text console and boot splash blocked. |
-| CURRENT_BYPASS | Serial USB shell console is the primary debugger and interaction interface. |
-| WHY_DEFERRED | As explicitly directed by the user, D8-M8 debugging is frozen at the Retry #10 boundary without further hardware experiments (no Retry #11). |
-| RESUME_CONDITION | Resume from commit `0243572` + freeze commit. Investigation focuses strictly on the PingPong0 → DSI command-mode handshake and trigger contract (`DSI_TRIG_CTRL`, `DSI_CMD_MODE_MDP_SW_TRIGGER`, `DSI_CMD_MDP_CTRL`). |
-| NEXT_INVESTIGATION | Audit downstream Qualcomm Linux `mdss_dsi_host.c` command-mode kickoff path: `mdss_dsi_cmd_mdp_busy()`, `DSI_CMD_MODE_MDP_SW_TRIGGER` (`0x00994094`), and `DSI_TRIG_CTRL` (`0x00994084`). Do not blindly pulse registers without verified driver source reference. |
+| RESOLUTION_COMMIT | `c84623bb760f34e583839c534e08684b35464fe0` |
+| RESOLUTION | Resolved by Milestone D8-M8.5 First Visible Display Closure Campaign: 1. Implemented PMI8994 QPNP WLED backlight driver (3 LED strings, 1200/4095 brightness) via SPMI. 2. Transmitted 13 authentic Sharp vendor initialization commands from `keyaki.dts` line 1872 (`somc,default_cmd_panel`) before scanout initiation. 3. Configured `PP0_AUTOREFRESH = 0x80000001` with internal VSYNC timing (`PP0_SYNC_CFG_VSYNC = 0x00180093`, `PP0_SYNC_CFG_HGHT = 0x0000FFF0`) to autonomously drive 60Hz scanout. 4. Eliminated conflicting post-kickoff DSI SW DMA reads. Verified across 3/3 fresh cold boots (`V1`, `V2`, `V3`) displaying 8 color bars + center badge. See `docs/XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md` and `docs/XZS_D8_M8_FINAL_RECONCILIATION.md`. |
+| IMPACT | RESOLVED. Native XNU scans out framebuffer pixels to physical Sharp LCD panel. Unblocks D8-M10 (Framebuffer Text Console). |
+
 
 

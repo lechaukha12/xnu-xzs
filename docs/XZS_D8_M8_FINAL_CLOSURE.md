@@ -3,9 +3,17 @@
 ### Sony Xperia XZs (G8231 / Tone / Keyaki / MSM8996)
 ### Target Device: BH905SX976 | Mode: RAM BOOT ONLY (fastboot boot) | PAC: Strict Zero-PAC Enforced
 
+> [!NOTE]
+> **Historical Archive & Reconciliation Notice**:
+> This report documents the outcome of the original D8-M8 campaign (`D8_M8_CLOSURE_CAMPAIGN = EXHAUSTED_NOT_SEALED`).
+> Milestone D8-M8 has subsequently been **CLOSED / SUPERSEDED BY D8-M8.5**, whose closure campaign achieved `D8_M8_5_VISIBLE_PIXELS = HW_PROVEN` on physical hardware across 3/3 fresh cold boots. The touch-interlock hypothesis documented below was disproven by Sony LK source audit and D8-M8.5 hardware execution.
+> Authoritative reconciliation: [`docs/XZS_D8_M8_FINAL_RECONCILIATION.md`](XZS_D8_M8_FINAL_RECONCILIATION.md).
+> First light hardware proof: [`docs/XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md`](XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md).
+
 ---
 
 ## 1. Executive Summary
+
 
 The **D8-M8 Final Closure Campaign** was executed to determine whether the first native MDP5 command-mode frame could be released and scanned out to the physical display panel on the Sony Xperia XZs under pure bare-metal XNU execution without an active Linux driver stack.
 
