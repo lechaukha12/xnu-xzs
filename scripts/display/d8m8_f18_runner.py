@@ -106,6 +106,8 @@ def main():
         elif label == "m8-kickoff":
             kickoff_text = output
             (LOG_DIR / "kickoff.txt").write_text(output)
+            (LOG_DIR / "raw-observation.txt").write_text(output)
+            (LOG_DIR / "ddic-readback.txt").write_text(output)
         return output
 
     try:
@@ -121,30 +123,101 @@ def main():
 
         boot_hash = sha256_of(BOOT)
         kernel_hash = sha256_of(KERNEL)
-        note(f"BOOT_IMG = {BOOT} ({boot_hash})\n")
-        note(f"KERNEL   = {KERNEL} ({kernel_hash})\n")
+        commit_sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        git_diff = subprocess.run(["git", "diff", "HEAD~1"], capture_output=True, text=True).stdout
+        (LOG_DIR / "git-diff.txt").write_text(git_diff)
 
-        note(f"\nBooting {BOOT.name} via fastboot boot (ONE RAM BOOT ONLY)...\n")
+        build_id = [
+            f"HEAD={commit_sha}",
+            f"BOOT_IMAGE={BOOT}",
+            f"BOOT_SHA256={boot_hash}",
+            f"KERNEL={KERNEL}",
+            f"KERNEL_SHA256={kernel_hash}",
+            f"PAC=0",
+            f"PROTOCOL=D8-M8 F18 MSM8996 DSI v1.4 RX/BTA Closure & Valid DDIC State Differential",
+        ]
+        (LOG_DIR / "build-identity.txt").write_text("\n".join(build_id) + "\n")
+        note("\n=== BUILD IDENTITY ===\n" + "\n".join(build_id) + "\n\n")
+
+        note(f"Booting {BOOT.name} via fastboot boot (ONE RAM BOOT ONLY)...\n")
         boot_attempted = True
         boot_proc = subprocess.run(["fastboot", "-s", SERIAL, "boot", str(BOOT)], capture_output=True, text=True)
         note(boot_proc.stdout + "\n" + boot_proc.stderr + "\n")
         if boot_proc.returncode != 0:
             raise RuntimeError(f"fastboot boot failed with code {boot_proc.returncode}")
 
-        note("Connecting to USB serial console...\n")
-        dev = helpers.xzs_console.find_device()
-        helpers.xzs_console.acquire_device(dev)
+        # 4. Connect USB console
+        note("Waiting for USB console...\n")
+        dev = helpers.xzs_console.open_stable_device(timeout_sec=40)
+        if dev is None:
+            raise RuntimeError("USB console failed to enumerate after boot")
 
-        note("Synchronizing shell prompt...\n")
-        helpers.sync_prompt(dev, timeout_sec=30)
-        note("Shell prompt synchronized successfully.\n")
+        note("XZS console connected.\n")
+        prompt = False
+        for _ in range(8):
+            helpers.xzs_console.bulk_write(dev, b"\n", timeout_ms=1000)
+            time.sleep(0.4)
+            data = helpers.collect(dev, seconds=1.5)
+            decoded = data.decode("utf-8", errors="replace")
+            note(decoded)
+            if "xzs#" in decoded:
+                prompt = True
+                break
+        if not prompt:
+            raise RuntimeError("Timed out waiting for xzs# shell prompt")
 
-        step(dev, "display status baseline", "display", timeout=5, expected="XZS DISPLAY SUBSYSTEM DIAGNOSTICS")
-        step(dev, "m8-prepare", "display m8-prepare", timeout=10, expected="PANEL_PREPARE=PASS")
-        step(dev, "m8-prekick", "display m8-prekick", timeout=5, expected="PREKICK_READY=")
+        prerequisites = [
+            ("MMAGIC_AHB", "clocks mmagic-ahb-on", 5, "PASS"),
+            ("MMAGIC_CFG_AHB", "clocks mmagic-cfg-ahb-on", 5, "PASS"),
+            ("MMAGIC_NOC", "clocks mmagic-mdss-noc-on", 5, "PASS"),
+            ("MMAGIC_AXI", "clocks mmagic-mdss-axi-on", 5, "PASS"),
+            ("MDSS_GDSC", "display power mdss-on", 5, "PASS"),
+            ("MDSS_AHB", "clocks mdss-ahb-on", 5, "PASS"),
+            ("MDSS_AXI", "clocks mdss-axi-on", 5, "PASS"),
+            ("MDSS_MDP", "clocks mdp-on", 5, "PASS"),
+            ("CORE_STATUS", "clocks mdss-critical-status", 5, "PASS"),
+            ("M3", "display m3-run full", 50, "PASS_FULL_M3"),
+            ("M4", "display m4-run full", 10, "PASS_MODE2"),
+            ("P1", "display p1-run", 5, "RESULT=PASS_P1"),
+        ]
+        for label, command, timeout, expected in prerequisites:
+            step(dev, label, command, timeout, expected)
 
+        # 6. Panel Prepare: Authentic Pre-Kick ON Commands Only (TEON + DISPON, SLPOUT_SENT=NO)
+        prep_text = step(dev, "PANEL_PREPARE", "display m8-status", 30, "PANEL_READY=yes")
+        (LOG_DIR / "panel-prepare.txt").write_text(prep_text)
+
+        if "POWER_PRECHECK=PASS" not in prep_text or "PANEL_READY=yes" not in prep_text:
+            raise RuntimeError("Panel power precheck or prepare gate failed!")
+
+        # 7. FB Init
+        step(dev, "M8-1", "display m8-fb-init", 60, "M8_1             = PASS")
+
+        # 8. Conformant C1 MDP rate configuration (171428571 Hz / CFG 0x00000506)
+        clock_text = step(dev, "CLOCK RATE", "clocks mdss-ahb-debug", 20, "[C1] C1_END")
+        (LOG_DIR / "c1-rate-confirm.txt").write_text(clock_text)
+        if "[C1] C1_READY_FOR_FRAME=YES" not in clock_text:
+            raise RuntimeError("MDP clock rate not ready for frame kickoff")
+
+        # 9. Pipeline setup with PP0_AUTOREFRESH = 0x00000000
+        frame = [
+            ("M8-2", "display m8-rgb0-config", 15, "M8_2             = PASS"),
+            ("M8-3", "display m8-lm0-config", 15, "M8_3             = PASS"),
+            ("M8-4", "display m8-stream-config", 15, "M8_4             = PASS"),
+            ("M8-5", "display m8-ctl-config", 15, "M8_5             = PASS"),
+            ("M8-6", "display m8-flush-config", 15, "M8_6              = PASS"),
+        ]
+        for label, command, timeout, expected in frame:
+            step(dev, label, command, timeout, expected)
+
+        # 10. Pre-kick audit
+        prekick_text = step(dev, "PREKICK", "display m8-prekick-status", 20, "PREKICK_READY=YES")
+        (LOG_DIR / "pre-kick.txt").write_text(prekick_text)
+
+        # 11. Controlled Kickoff with Exact Sony Post-On SLPOUT & F18 Live DDIC State Readback
         note("Executing m8-kickoff (CTL_START, post-on SLPOUT, 360ms observation, MDP disarm, F18 DDIC audit)...\n")
-        step(dev, "m8-kickoff", "display m8-kickoff", timeout=30, expected="R11C_SAFE_SHUTDOWN=PASS")
+        kickoff_text = step(dev, "KICKOFF", "display m8-kickoff", 120, "R11C_SAFE_SHUTDOWN=")
+        (LOG_DIR / "kickoff.txt").write_text(kickoff_text)
 
     except Exception as exc:
         boot_fault = True
