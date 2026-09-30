@@ -718,6 +718,13 @@ struct xzs_f1_te_metrics {
 	uint32_t gpio10_prev_val;
 	uint32_t gpio10_min;
 	uint32_t gpio10_max;
+	/* F14 Distinct RD_PTR / WR_PTR Tracking */
+	uint32_t rd_ptr_asserted_sample_count;
+	uint32_t rd_ptr_distinct_event_count;
+	bool     rd_ptr_latched;
+	uint32_t wr_ptr_asserted_sample_count;
+	uint32_t wr_ptr_distinct_event_count;
+	bool     wr_ptr_latched;
 };
 static struct xzs_f1_te_metrics g_f1_metrics;
 
@@ -752,6 +759,12 @@ xzs_d8m8_r11db_reset(void)
 	g_f1_metrics.gpio10_prev_val = initial_te;
 	g_f1_metrics.gpio10_min = initial_te;
 	g_f1_metrics.gpio10_max = initial_te;
+	g_f1_metrics.rd_ptr_asserted_sample_count = 0;
+	g_f1_metrics.rd_ptr_distinct_event_count = 0;
+	g_f1_metrics.rd_ptr_latched = false;
+	g_f1_metrics.wr_ptr_asserted_sample_count = 0;
+	g_f1_metrics.wr_ptr_distinct_event_count = 0;
+	g_f1_metrics.wr_ptr_latched = false;
 
 	g_r11db_count = 0;
 	g_r11db_gate_count = 0;
@@ -913,8 +926,28 @@ xzs_d8m8_r11db_observe(uint64_t cycles, uint64_t frq)
 	if (gpio10_pad < g_f1_metrics.gpio10_min) g_f1_metrics.gpio10_min = gpio10_pad;
 	if (gpio10_pad > g_f1_metrics.gpio10_max) g_f1_metrics.gpio10_max = gpio10_pad;
 
-	if ((intr & 0x00001000u) != 0) g_f1_metrics.rd_ptr_count++;
-	if ((intr & 0x00010000u) != 0) g_f1_metrics.wr_ptr_count++;
+	if ((intr & 0x00001000u) != 0) {
+		g_f1_metrics.rd_ptr_count++;
+		g_f1_metrics.rd_ptr_asserted_sample_count++;
+		if (!g_f1_metrics.rd_ptr_latched) {
+			g_f1_metrics.rd_ptr_distinct_event_count++;
+			g_f1_metrics.rd_ptr_latched = true;
+			d8p1_write32(0x00901018u, 1u << 12);
+		}
+	} else {
+		g_f1_metrics.rd_ptr_latched = false;
+	}
+	if ((intr & 0x00010000u) != 0) {
+		g_f1_metrics.wr_ptr_count++;
+		g_f1_metrics.wr_ptr_asserted_sample_count++;
+		if (!g_f1_metrics.wr_ptr_latched) {
+			g_f1_metrics.wr_ptr_distinct_event_count++;
+			g_f1_metrics.wr_ptr_latched = true;
+			d8p1_write32(0x00901018u, 1u << 16);
+		}
+	} else {
+		g_f1_metrics.wr_ptr_latched = false;
+	}
 	if ((intr & 0x00000100u) != 0) g_f1_metrics.seen_pp_done = true;
 	if (pp_line > g_f1_metrics.max_pp_line) g_f1_metrics.max_pp_line = pp_line;
 	if (pp_out > g_f1_metrics.max_pp_out) g_f1_metrics.max_pp_out = pp_out;
@@ -2372,8 +2405,9 @@ xzs_d8m8_kickoff(void)
 	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
 	if (frq == 0) frq = 19200000ULL;
 
-	/* Pre-kick interrupt cleanup: Read PRE_INTR_STATUS, clear 0x00011100 (bits 8, 12, 16), re-read POST_CLEAR_INTR_STATUS */
+	/* Pre-kick interrupt cleanup: Read PRE_CLEAR_INTR_STATUS, clear 0x00011100 (bits 8, 12, 16), re-read POST_CLEAR_INTR_STATUS */
 	uint32_t pre_intr = d8p1_read32(0x00901014u);
+	xzs_diag_emit("PRE_CLEAR_INTR_STATUS=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("PRE_INTR_STATUS=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("INTR_STATUS_PRE=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 
@@ -2395,6 +2429,7 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("POST_CLEAR_INTR_STATUS=0x"); xzs_d8p1_hex32(post_clear_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("INTR_STATUS_POST_CLEAR=0x"); xzs_d8p1_hex32(post_clear_intr); xzs_diag_emit("\n");
 	bool f7_post_clear_pass = ((post_clear_intr & 0x00011100u) == 0);
+	xzs_diag_emit("POST_CLEAR_PASS="); xzs_diag_emit(f7_post_clear_pass ? "YES\n" : "NO\n");
 	xzs_diag_emit("F7_POST_CLEAR_PASS="); xzs_diag_emit(f7_post_clear_pass ? "YES\n" : "NO\n");
 
 	/* F4 Phase C: Same-Boot Fresh TE Hard Gate (Sections 19-23)
@@ -2952,13 +2987,19 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("F1_DSI_BUSY_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_busy ? "yes\n" : "no\n");
 	xzs_diag_emit("F1_CMD_MDP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_mdp_done ? "yes\n" : "no\n");
 
-	/* F7 Canonical Metrics per Section 16, 17, 30 */
-	bool f7_fresh_rd_ptr = (g_f1_metrics.rd_ptr_count > 0);
+	/* F14 Canonical Distinct Metrics */
+	xzs_diag_emit("RD_PTR_ASSERTED_SAMPLE_COUNT="); xzs_d8m8_dec(g_f1_metrics.rd_ptr_asserted_sample_count); xzs_diag_emit("\n");
+	xzs_diag_emit("RD_PTR_DISTINCT_EVENT_COUNT="); xzs_d8m8_dec(g_f1_metrics.rd_ptr_distinct_event_count); xzs_diag_emit("\n");
+	xzs_diag_emit("WR_PTR_ASSERTED_SAMPLE_COUNT="); xzs_d8m8_dec(g_f1_metrics.wr_ptr_asserted_sample_count); xzs_diag_emit("\n");
+	xzs_diag_emit("WR_PTR_DISTINCT_EVENT_COUNT="); xzs_d8m8_dec(g_f1_metrics.wr_ptr_distinct_event_count); xzs_diag_emit("\n");
+
+	/* F7 / F14 Canonical Metrics */
+	bool f14_fresh_rd_ptr = (g_f1_metrics.rd_ptr_distinct_event_count > 0);
 	bool f7_counter_reload = (g_f1_metrics.backward_jumps > 0);
-	bool f7_post_kick_fresh_te = f7_fresh_rd_ptr || f7_counter_reload;
-	xzs_diag_emit("FRESH_RD_PTR_AFTER_CTL_START="); xzs_diag_emit(f7_fresh_rd_ptr ? "YES\n" : "NO\n");
+	bool f7_post_kick_fresh_te = f14_fresh_rd_ptr || f7_counter_reload;
+	xzs_diag_emit("FRESH_RD_PTR_AFTER_CTL_START="); xzs_diag_emit(f14_fresh_rd_ptr ? "YES\n" : "NO\n");
 	xzs_diag_emit("PP_COUNTER_RELOAD_SEEN="); xzs_diag_emit(f7_counter_reload ? "YES\n" : "NO\n");
-	xzs_diag_emit("PP0_WR_PTR_SEEN="); xzs_diag_emit((g_f1_metrics.wr_ptr_count > 0) ? "YES\n" : "NO\n");
+	xzs_diag_emit("PP0_WR_PTR_SEEN="); xzs_diag_emit((g_f1_metrics.wr_ptr_distinct_event_count > 0) ? "YES\n" : "NO\n");
 	xzs_diag_emit("FRESH_TE_AFTER_CTL_START="); xzs_diag_emit(f7_post_kick_fresh_te ? "YES\n" : "NO\n");
 	xzs_diag_emit("PREKICK_TE_GATE_WAS_INVALID="); xzs_diag_emit(f7_post_kick_fresh_te ? "YES\n" : "NO\n");
 	xzs_diag_emit("PP_LINE_NONZERO="); xzs_diag_emit((g_f1_metrics.max_pp_line > 0) ? "YES\n" : "NO\n");
@@ -2982,7 +3023,7 @@ xzs_d8m8_kickoff(void)
 	}
 	xzs_diag_emit("\n");
 	xzs_diag_emit("DID_DCS_ORDER_RESTORE_POST_KICK_TE=");
-	xzs_diag_emit(f7_fresh_rd_ptr ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
+	xzs_diag_emit(f14_fresh_rd_ptr ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
 	xzs_diag_emit("DID_DCS_ORDER_START_PP_FRAME=");
 	xzs_diag_emit((g_f1_metrics.max_pp_line > 0) ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
 
@@ -2996,7 +3037,7 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("PHYSICAL_TE_AT_GPIO10="); xzs_diag_emit(f8_physical_te ? "YES\n" : "NO\n");
 	xzs_diag_emit("GPIO10_TE_AFTER_CTL_START="); xzs_diag_emit(f8_physical_te ? "YES\n" : "NO\n");
 	xzs_diag_emit("GPIO10_TRANSITIONS="); xzs_d8m8_dec(g_f1_metrics.gpio10_transitions); xzs_diag_emit("\n");
-	xzs_diag_emit("FRESH_RD_PTR="); xzs_diag_emit(f7_fresh_rd_ptr ? "YES\n" : "NO\n");
+	xzs_diag_emit("FRESH_RD_PTR="); xzs_diag_emit(f14_fresh_rd_ptr ? "YES\n" : "NO\n");
 	xzs_diag_emit("PP_COUNTER_RELOAD="); xzs_diag_emit(f7_counter_reload ? "YES\n" : "NO\n");
 	xzs_diag_emit("DSI_BUSY_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_busy ? "YES\n" : "NO\n");
 	xzs_diag_emit("CMD_MDP_DONE_SEEN="); xzs_diag_emit(g_f1_metrics.seen_dsi_mdp_done ? "YES\n" : "NO\n");
