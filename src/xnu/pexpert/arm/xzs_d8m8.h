@@ -2368,9 +2368,203 @@ xzs_d8m8_prekick_status(void)
 	}
 }
 
-
-
 /*
+ * F18 MSM8996 DSI RX / BTA & DDIC State Audit
+ */
+static void
+xzs_d8m8_audit_ddic_state_f18(void)
+{
+	xzs_diag_emit("\n=== [F18] MSM8996 DSI RX / BTA & DDIC STATE AUDIT ===\n");
+
+	/* Disarm MDP trigger and PingPong before SW DMA readback to clear arbiter lockout */
+	d8m4_write32(0x0090201cu, 0); /* CTL_START = 0 */
+	d8m4_write32(0x00902018u, 0); /* CTL_FLUSH = 0 */
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u); /* Pure SW trigger */
+	d8m4_write32(0x00994040u, 0); /* DSI_COMMAND_MODE_MDP_CTRL = 0 */
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+
+	/* Pre-read state snapshot */
+	uint32_t pr_ctrl   = d8m4_read32(D8M6_REG_DSI_CTRL);
+	uint32_t pr_trig   = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
+	uint32_t pr_dma    = d8m4_read32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL);
+	uint32_t pr_lp     = d8m4_read32(0x009940b8u);
+	uint32_t pr_fifo   = d8m4_read32(D8M6_REG_DSI_FIFO_STATUS);
+	uint32_t pr_intr   = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
+	uint32_t pr_lane   = d8m4_read32(D8M6_REG_DSI_LANE_STATUS);
+
+	xzs_diag_emit("PRE_READ_DSI_CTRL=0x"); xzs_d8p1_hex32(pr_ctrl); xzs_diag_emit("\n");
+	xzs_diag_emit("PRE_READ_TRIG_CTRL=0x"); xzs_d8p1_hex32(pr_trig); xzs_diag_emit("\n");
+	xzs_diag_emit("PRE_READ_DMA_CTRL=0x"); xzs_d8p1_hex32(pr_dma); xzs_diag_emit("\n");
+	xzs_diag_emit("PRE_READ_LP_TIMER_CTRL=0x"); xzs_d8p1_hex32(pr_lp); xzs_diag_emit("\n");
+	xzs_diag_emit("PRE_READ_FIFO_STATUS=0x"); xzs_d8p1_hex32(pr_fifo); xzs_diag_emit("\n");
+	xzs_diag_emit("PRE_READ_INT_CTRL=0x"); xzs_d8p1_hex32(pr_intr); xzs_diag_emit("\n");
+	xzs_diag_emit("PRE_READ_LANE_STATUS=0x"); xzs_d8p1_hex32(pr_lane); xzs_diag_emit("\n");
+
+	/* Stage 1: Validation Gate - Read 0x04 (Display Identification Information) */
+	xzs_diag_emit("=== STAGE 1: DDIC IDENTITY READ (0x04) ===\n");
+	struct xzs_d8m6_rx_decoded rx04;
+	xzs_d8m6_read_dcs(0x04u, &rx04);
+
+	xzs_diag_emit("READ_0x04_RC="); xzs_d8m5_dec32((uint32_t)rx04.rc); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_CNT="); xzs_d8m5_dec32(rx04.cnt); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_R0=0x"); xzs_d8p1_hex32(rx04.r0); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_R1=0x"); xzs_d8p1_hex32(rx04.r1); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_R2=0x"); xzs_d8p1_hex32(rx04.r2); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_R3=0x"); xzs_d8p1_hex32(rx04.r3); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_ACK_ERR=0x"); xzs_d8p1_hex32(rx04.ack_err); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_TIMEOUT=0x"); xzs_d8p1_hex32(rx04.to_stat); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_PKT_TYPE=0x"); xzs_d8p2_hex8(rx04.pkt_type); xzs_diag_emit("\n");
+
+	xzs_diag_emit("READ_0x04_RAW_BYTES=[ ");
+	for (int b = 0; b < 16; b++) {
+		xzs_d8p2_hex8(rx04.raw_bytes[b]); xzs_diag_emit(" ");
+	}
+	xzs_diag_emit("]\n");
+
+	xzs_diag_emit("READ_0x04_LINUX_BYTES=[ ");
+	for (int b = 0; b < 16; b++) {
+		xzs_d8p2_hex8(rx04.linux_bytes[b]); xzs_diag_emit(" ");
+	}
+	xzs_diag_emit("]\n");
+
+	xzs_diag_emit("READ_0x04_RAW=");
+	for (uint32_t p = 0; p < rx04.payload_len; p++) {
+		xzs_d8p2_hex8(rx04.payload[p]);
+		if (p + 1 < rx04.payload_len) xzs_diag_emit(" ");
+	}
+	xzs_diag_emit("\n");
+	xzs_diag_emit("READ_0x04_EXPECTED=84 72 09\n");
+
+	bool read04_match = (rx04.payload_len >= 3) &&
+	                    (rx04.payload[0] == 0x84u) &&
+	                    (rx04.payload[1] == 0x72u) &&
+	                    (rx04.payload[2] == 0x09u);
+	bool read04_valid = rx04.is_valid && read04_match;
+
+	xzs_diag_emit("READ_0x04_VALID="); xzs_diag_emit(read04_valid ? "YES\n" : "NO\n");
+	xzs_diag_emit("XNU_DSI_RX_VALIDATED="); xzs_diag_emit(read04_valid ? "YES\n" : "NO\n");
+
+	if (!read04_valid) {
+		xzs_diag_emit("!!! [F18] RX VALIDATION GATE FAILED: 0x04 payload did not match 84 72 09!\n");
+		xzs_diag_emit("FIRST_DDIC_STATE_DIVERGENCE=UNKNOWN_DUE_TO_XNU_DSI_RX_FAILURE\n");
+		xzs_diag_emit("DDIC_SLEEP_OUT_LATCHED=UNKNOWN\n");
+		xzs_diag_emit("DDIC_DISPLAY_ON_LATCHED=UNKNOWN\n");
+		xzs_diag_emit("DDIC_TE_ENABLE_LATCHED=UNKNOWN\n");
+		xzs_diag_emit("DDIC_PIXEL_FORMAT_LATCHED=UNKNOWN\n");
+		xzs_diag_emit("DDIC_DIAGNOSTIC_FAULT=UNKNOWN\n");
+
+		/* Sample GPIO10 before return */
+		uint32_t hi_samples = 0, trans = 0, last_val = 0;
+		for (int s = 0; s < 200; s++) {
+			uint32_t val = xzs_d8m5_gpio_read_in(GPIO_TE_NUM);
+			if (val) hi_samples++;
+			if (s > 0 && val != last_val) trans++;
+			last_val = val;
+			xzs_d8p2_delay_us(10);
+		}
+		xzs_diag_emit("GPIO10_HIGH_SAMPLES="); xzs_d8m5_dec32(hi_samples); xzs_diag_emit("\n");
+		xzs_diag_emit("GPIO10_TRANSITIONS="); xzs_d8m5_dec32(trans); xzs_diag_emit("\n");
+		return;
+	}
+
+	/* Stage 2: Calibration IDs */
+	xzs_diag_emit("=== STAGE 2: CALIBRATION IDS ===\n");
+	struct xzs_d8m6_rx_decoded rx_da, rx_db, rx_dc;
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0xDAu, &rx_da);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0xDBu, &rx_db);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0xDCu, &rx_dc);
+
+	uint8_t id1 = rx_da.payload[0];
+	uint8_t id2 = rx_db.payload[0];
+	uint8_t id3 = rx_dc.payload[0];
+
+	xzs_diag_emit("READ_ID1=0x"); xzs_d8p2_hex8(id1); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_ID2=0x"); xzs_d8p2_hex8(id2); xzs_diag_emit("\n");
+	xzs_diag_emit("READ_ID3=0x"); xzs_d8p2_hex8(id3); xzs_diag_emit("\n");
+
+	xzs_diag_emit("READ_ID1_MATCH="); xzs_diag_emit(id1 == 0x52u ? "YES\n" : "NO\n");
+	xzs_diag_emit("READ_ID2_MATCH="); xzs_diag_emit(id2 == 0xDDu ? "YES\n" : "NO\n");
+	xzs_diag_emit("READ_ID3_MATCH="); xzs_diag_emit(id3 == 0x00u ? "YES\n" : "NO\n");
+
+	/* Phase D: DDIC Internal State Differential */
+	xzs_diag_emit("=== PHASE D: DDIC STATE REGISTERS ===\n");
+	struct xzs_d8m6_rx_decoded rx_0a, rx_0b, rx_0c, rx_0d, rx_0e, rx_0f;
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0x0Au, &rx_0a);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0x0Bu, &rx_0b);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0x0Cu, &rx_0c);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0x0Du, &rx_0d);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0x0Eu, &rx_0e);
+	xzs_d8p2_delay_us(1000);
+	xzs_d8m6_read_dcs(0x0Fu, &rx_0f);
+
+	uint8_t v_0a = rx_0a.payload[0];
+	uint8_t v_0b = rx_0b.payload[0];
+	uint8_t v_0c = rx_0c.payload[0];
+	uint8_t v_0d = rx_0d.payload[0];
+	uint8_t v_0e = rx_0e.payload[0];
+	uint8_t v_0f = rx_0f.payload[0];
+
+	xzs_diag_emit("XNU_DDIC_0x0A=0x"); xzs_d8p2_hex8(v_0a); xzs_diag_emit("\n");
+	xzs_diag_emit("XNU_DDIC_0x0B=0x"); xzs_d8p2_hex8(v_0b); xzs_diag_emit("\n");
+	xzs_diag_emit("XNU_DDIC_0x0C=0x"); xzs_d8p2_hex8(v_0c); xzs_diag_emit("\n");
+	xzs_diag_emit("XNU_DDIC_0x0D=0x"); xzs_d8p2_hex8(v_0d); xzs_diag_emit("\n");
+	xzs_diag_emit("XNU_DDIC_0x0E=0x"); xzs_d8p2_hex8(v_0e); xzs_diag_emit("\n");
+	xzs_diag_emit("XNU_DDIC_0x0F=0x"); xzs_d8p2_hex8(v_0f); xzs_diag_emit("\n");
+
+	/* First valid DDIC state divergence check */
+	if (v_0a != 0x1Cu) {
+		xzs_diag_emit("FIRST_VALID_DDIC_STATE_DIVERGENCE=0x0A Power Mode mismatch (TWRP=0x1C vs XNU=0x");
+		xzs_d8p2_hex8(v_0a); xzs_diag_emit(")\n");
+	} else if (v_0e != 0x80u) {
+		xzs_diag_emit("FIRST_VALID_DDIC_STATE_DIVERGENCE=0x0E Signal Mode mismatch (TWRP=0x80 vs XNU=0x");
+		xzs_d8p2_hex8(v_0e); xzs_diag_emit(")\n");
+	} else if (v_0c != 0x77u) {
+		xzs_diag_emit("FIRST_VALID_DDIC_STATE_DIVERGENCE=0x0C Pixel Format mismatch (TWRP=0x77 vs XNU=0x");
+		xzs_d8p2_hex8(v_0c); xzs_diag_emit(")\n");
+	} else if (v_0f != 0x40u) {
+		xzs_diag_emit("FIRST_VALID_DDIC_STATE_DIVERGENCE=0x0F Diagnostic mismatch (TWRP=0x40 vs XNU=0x");
+		xzs_d8p2_hex8(v_0f); xzs_diag_emit(")\n");
+	} else {
+		xzs_diag_emit("FIRST_VALID_DDIC_STATE_DIVERGENCE=NONE (DDIC state matches TWRP bit-exactly)\n");
+	}
+
+	bool sleep_out = ((v_0a & 0x10u) == 0);
+	bool disp_on   = ((v_0a & 0x04u) != 0);
+	bool te_en     = ((v_0e & 0x80u) != 0);
+	bool pix_match = (v_0c == 0x77u);
+
+	xzs_diag_emit("DDIC_SLEEP_OUT_LATCHED="); xzs_diag_emit(sleep_out ? "YES\n" : "NO\n");
+	xzs_diag_emit("DDIC_DISPLAY_ON_LATCHED="); xzs_diag_emit(disp_on ? "YES\n" : "NO\n");
+	xzs_diag_emit("DDIC_TE_ENABLE_LATCHED="); xzs_diag_emit(te_en ? "YES\n" : "NO\n");
+	xzs_diag_emit("DDIC_PIXEL_FORMAT_LATCHED="); xzs_diag_emit(pix_match ? "YES\n" : "NO\n");
+
+	xzs_diag_emit("DDIC_DIAGNOSTIC_FAULT=");
+	if (v_0f == 0x40u) {
+		xzs_diag_emit("NONE (0x40 NORMAL)\n");
+	} else {
+		xzs_diag_emit("0x"); xzs_d8p2_hex8(v_0f); xzs_diag_emit("\n");
+	}
+
+	/* Sample GPIO10 while DDIC is awake */
+	uint32_t hi_samples = 0, trans = 0, last_val = 0;
+	for (int s = 0; s < 200; s++) {
+		uint32_t val = xzs_d8m5_gpio_read_in(GPIO_TE_NUM);
+		if (val) hi_samples++;
+		if (s > 0 && val != last_val) trans++;
+		last_val = val;
+		xzs_d8p2_delay_us(10);
+	}
+	xzs_diag_emit("GPIO10_HIGH_SAMPLES="); xzs_d8m5_dec32(hi_samples); xzs_diag_emit("\n");
+	xzs_diag_emit("GPIO10_TRANSITIONS="); xzs_d8m5_dec32(trans); xzs_diag_emit("\n");
+}
  * D8-M8-7: Controlled Single Kickoff Diagnostic (display m8-kickoff / display m8-7)
  * Executes exactly ONE write to CTL_START (0x0090201c = 1) and polls for PP0_DONE.
  */
@@ -3143,100 +3337,8 @@ xzs_d8m8_kickoff(void)
 	xzs_diag_emit("R11C_FINAL_TIMEOUT=0x"); xzs_d8p1_hex32(g_m8_r11a_snapshots[12].dsi_timeout); xzs_diag_emit("\n");
 	xzs_diag_emit("M8_7_RETRY11C=OBSERVATION_COMPLETE\n");
 
-	/* F17 Phase D: Live DDIC Register Readback while panel is active */
-	xzs_diag_emit("=== F17 PHASE D: LIVE DDIC STATE READBACK ===\n");
-	static const uint8_t s_ddic_regs[] = {
-		0x0Au, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x04u, 0xDAu, 0xDBu, 0xDCu, 0xB0u, 0xD6u, 0xC6u
-	};
-	static const char *s_ddic_names[] = {
-		"0x0A (Power Mode)",
-		"0x0B (Address Mode)",
-		"0x0C (Pixel Format)",
-		"0x0D (Display Mode)",
-		"0x0E (Signal Mode)",
-		"0x0F (Diagnostic)",
-		"0x04 (DDB Start)",
-		"0xDA (DSI ID1)",
-		"0xDB (DSI ID2)",
-		"0xDC (DSI ID3)",
-		"0xB0 (Vendor B0)",
-		"0xD6 (Vendor D6)",
-		"0xC6 (Vendor C6)"
-	};
-
-	uint32_t val_0a = 0, val_0b = 0, val_0c = 0, val_0d = 0, val_0e = 0, val_0f = 0;
-	uint32_t val_da = 0, val_db = 0, val_dc = 0;
-
-	for (size_t di = 0; di < (sizeof(s_ddic_regs) / sizeof(s_ddic_regs[0])); di++) {
-		xzs_watchdog_pet();
-		uint8_t op = s_ddic_regs[di];
-		uint32_t r0 = 0, r1 = 0, cnt = 0, ack_err = 0;
-		int rc = xzs_d8m6_read_dcs(op, &r0, &r1, &cnt, &ack_err);
-
-		xzs_diag_emit("DDIC_REG_"); xzs_diag_emit(s_ddic_names[di]);
-		xzs_diag_emit(": rc="); xzs_d8m5_dec32((uint32_t)rc);
-		xzs_diag_emit(" cnt="); xzs_d8m5_dec32(cnt);
-		xzs_diag_emit(" r0=0x"); xzs_d8p1_hex32(r0);
-		xzs_diag_emit(" ack_err=0x"); xzs_d8p1_hex32(ack_err);
-		xzs_diag_emit("\n");
-
-		/* In DSI RDBK, byte 0 is response type (0x21 DCS short, 0x1a long, 0x02 ack err), byte 1 is payload */
-		uint8_t payload = (uint8_t)((r0 >> 8) & 0xffu);
-		if (op == 0x0Au) val_0a = payload;
-		else if (op == 0x0Bu) val_0b = payload;
-		else if (op == 0x0Cu) val_0c = payload;
-		else if (op == 0x0Du) val_0d = payload;
-		else if (op == 0x0Eu) val_0e = payload;
-		else if (op == 0x0Fu) val_0f = payload;
-		else if (op == 0xDAu) val_da = payload;
-		else if (op == 0xDBu) val_db = payload;
-		else if (op == 0xDCu) val_dc = payload;
-		xzs_d8p2_delay_us(1000);
-	}
-
-	xzs_diag_emit("DDIC_READ_0x0A=0x"); xzs_d8p2_hex8((uint8_t)val_0a); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0x0B=0x"); xzs_d8p2_hex8((uint8_t)val_0b); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0x0C=0x"); xzs_d8p2_hex8((uint8_t)val_0c); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0x0D=0x"); xzs_d8p2_hex8((uint8_t)val_0d); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0x0E=0x"); xzs_d8p2_hex8((uint8_t)val_0e); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0x0F=0x"); xzs_d8p2_hex8((uint8_t)val_0f); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0xDA=0x"); xzs_d8p2_hex8((uint8_t)val_da); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0xDB=0x"); xzs_d8p2_hex8((uint8_t)val_db); xzs_diag_emit("\n");
-	xzs_diag_emit("DDIC_READ_0xDC=0x"); xzs_d8p2_hex8((uint8_t)val_dc); xzs_diag_emit("\n");
-
-	bool sleep_out = ((val_0a & 0x10u) == 0) && (val_0a != 0);
-	bool disp_on = ((val_0a & 0x04u) != 0);
-	bool te_en = ((val_0e & 0x80u) != 0);
-	bool pix_match = (val_0c == 0x77u);
-
-	xzs_diag_emit("DDIC_SLEEP_OUT_LATCHED="); xzs_diag_emit(sleep_out ? "YES\n" : (val_0a == 0 ? "UNKNOWN\n" : "NO\n"));
-	xzs_diag_emit("DDIC_DISPLAY_ON_LATCHED="); xzs_diag_emit(disp_on ? "YES\n" : (val_0a == 0 ? "UNKNOWN\n" : "NO\n"));
-	xzs_diag_emit("DDIC_TE_ENABLE_LATCHED="); xzs_diag_emit(te_en ? "YES\n" : (val_0e == 0 ? "UNKNOWN\n" : "NO\n"));
-	xzs_diag_emit("DDIC_PIXEL_FORMAT_LATCHED="); xzs_diag_emit(pix_match ? "YES\n" : (val_0c == 0 ? "UNKNOWN\n" : "NO\n"));
-	xzs_diag_emit("DDIC_DIAGNOSTIC_FAULT=");
-	if (val_0f == 0x40u) {
-		xzs_diag_emit("NONE (0x40 NORMAL)\n");
-	} else if (val_0f == 0) {
-		xzs_diag_emit("UNKNOWN\n");
-	} else {
-		xzs_diag_emit("0x"); xzs_d8p2_hex8((uint8_t)val_0f); xzs_diag_emit("\n");
-	}
-
-	/* Compare against TWRP golden: 0x0A=0x1C, 0x0B=0x00, 0x0C=0x77, 0x0D=0x00, 0x0E=0x80, 0x0F=0x40 */
-	if (val_0a != 0x1Cu && val_0a != 0) {
-		xzs_diag_emit("FIRST_DDIC_STATE_DIVERGENCE=0x0A Power Mode mismatch (TWRP=0x1C vs XNU=0x");
-		xzs_d8p2_hex8((uint8_t)val_0a); xzs_diag_emit(")\n");
-	} else if (val_0e != 0x80u && val_0e != 0) {
-		xzs_diag_emit("FIRST_DDIC_STATE_DIVERGENCE=0x0E Signal Mode mismatch (TWRP=0x80 TE_ON vs XNU=0x");
-		xzs_d8p2_hex8((uint8_t)val_0e); xzs_diag_emit(")\n");
-	} else if (val_0c != 0x77u && val_0c != 0) {
-		xzs_diag_emit("FIRST_DDIC_STATE_DIVERGENCE=0x0C Pixel Format mismatch (TWRP=0x77 vs XNU=0x");
-		xzs_d8p2_hex8((uint8_t)val_0c); xzs_diag_emit(")\n");
-	} else if (val_0a == 0 && val_0e == 0) {
-		xzs_diag_emit("FIRST_DDIC_STATE_DIVERGENCE=DSI_READ_UNRESPONSIVE_OR_NO_RETURN_DATA\n");
-	} else {
-		xzs_diag_emit("FIRST_DDIC_STATE_DIVERGENCE=NONE (DDIC state matches TWRP bit-exactly)\n");
-	}
+	/* F18 Phase D: MSM8996 DSI v1.4 RX / BTA & DDIC State Audit */
+	xzs_d8m8_audit_ddic_state_f18();
 
 	/* Do not issue another frame. Preserve the snapshots, then shut down safely. */
 	int shutdown_rc = xzs_d8m6_panel_shutdown();

@@ -507,17 +507,44 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 /*
  * Safe DSI DCS Read Routine for MSM8996 (F17 Phase B)
  * Transmits short DCS read command with BTA enabled, and polls for RDBK return payload.
+/*
+ * Decoded DSI RX Response Structure (F18)
+ */
+struct xzs_d8m6_rx_decoded {
+	int rc;                    /* 0 = success, -1 = timeout */
+	uint32_t cnt;              /* bytes reported in 0x1d4 >> 16 */
+	uint32_t r0, r1, r2, r3;   /* raw registers 0x06c, 0x070, 0x074, 0x078 */
+	uint32_t ack_err;          /* 0x068 */
+	uint32_t to_stat;          /* 0x0c0 */
+	uint8_t pkt_type;          /* response packet type (0x21, 0x1c, etc.) */
+	uint8_t raw_bytes[16];     /* direct register byte stream (LE) */
+	uint8_t linux_bytes[16];   /* Linux descending ntohl stream */
+	uint8_t payload[8];        /* extracted DCS payload bytes */
+	uint32_t payload_len;      /* count of payload bytes */
+	bool is_valid;
+};
+
+/*
+ * Safe DSI DCS Read Routine for MSM8996 (F18 Phase C)
+ * Ensures DSI trigger arbiter is in Software Trigger mode (clearing bit 31 and MDP ctrl),
+ * sets Low Power timer to 0xffffffff, transmits DCS read with BTA, and decodes payload.
  */
 static int
-xzs_d8m6_read_dcs(uint8_t dcs_cmd, uint32_t *out_rdbk0, uint32_t *out_rdbk1, uint32_t *out_cnt, uint32_t *out_ack_err)
+xzs_d8m6_read_dcs(uint8_t dcs_cmd, struct xzs_d8m6_rx_decoded *out)
 {
-	if (!out_rdbk0 || !out_cnt) {
+	if (!out) {
 		return -1;
 	}
-	*out_rdbk0 = 0;
-	if (out_rdbk1) *out_rdbk1 = 0;
-	*out_cnt = 0;
-	if (out_ack_err) *out_ack_err = 0;
+	out->rc = -1;
+	out->cnt = 0;
+	out->r0 = 0; out->r1 = 0; out->r2 = 0; out->r3 = 0;
+	out->ack_err = 0;
+	out->to_stat = 0;
+	out->pkt_type = 0;
+	out->payload_len = 0;
+	out->is_valid = false;
+	for (int i = 0; i < 16; i++) out->raw_bytes[i] = 0;
+	for (int i = 0; i < 8; i++) out->payload[i] = 0;
 
 	/* 1. Ensure Low Power and BTA timers match TWRP (0xffffffff) */
 	d8m4_write32(0x009940b8u, 0xffffffffu);
@@ -528,12 +555,21 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, uint32_t *out_rdbk0, uint32_t *out_rdbk1, uin
 	d8m4_write32(0x009941d4u, 0x00000000u);
 	__asm__ volatile("dsb sy; isb" ::: "memory");
 
-	/* 3. Send Set Maximum Return Packet Size (DTYPE_MAX_PKTSIZE = 0x37) */
+	/* 3. Ensure DSI trigger controls select pure Software Trigger (bit 31 CLEARED, bit 2 SET) */
 	uint32_t orig_trig = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
-	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig | 0x00000004u);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
+
+	/* Ensure DSI Command Mode MDP engine is not locking the arbiter */
+	uint32_t orig_mdp_ctrl = d8m4_read32(0x00994040u);
+	d8m4_write32(0x00994040u, 0x00000000u);
 
 	uint32_t orig_clk = d8m4_read32(D8M6_REG_DSI_CLK_CTRL);
 	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk | (1u << 8) | (1u << 9) | (1u << 11) | (1u << 21));
+
+	/* 4. Send Set Maximum Return Packet Size (DTYPE_MAX_PKTSIZE = 0x37) */
+	/* 10 bytes for long read (0x04), 4 bytes for short reads */
+	uint32_t max_size = (dcs_cmd == 0x04u) ? 0x0Au : 0x04u;
+	uint32_t max_pkt_dword = max_size | (0x00u << 8) | (0x37u << 16) | (0x80u << 24);
 
 	/* Reset TPG DMA FIFO before loading max pkt size */
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
@@ -542,8 +578,6 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, uint32_t *out_rdbk0, uint32_t *out_rdbk1, uin
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
 
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, (1u << 1) | (1u << 2) | (0x3u << 16));
-	/* 0x04 size, 0x00 param, 0x37 DTYPE_MAX_PKTSIZE, 0x80 LAST */
-	uint32_t max_pkt_dword = 0x04u | (0x00u << 8) | (0x37u << 16) | (0x80u << 24);
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, max_pkt_dword);
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, 0);
 
@@ -553,62 +587,62 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, uint32_t *out_rdbk0, uint32_t *out_rdbk1, uin
 	__asm__ volatile("dsb sy; isb" ::: "memory");
 	d8m4_write32(D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER, D8M6_DMA_SW_TRIGGER_VAL);
 
-	/* Poll for max pkt size done (10 ms) */
-	for (int p = 0; p < 1000; p++) {
+	/* Poll for max pkt size done (15 ms) */
+	for (int p = 0; p < 1500; p++) {
 		if (d8m4_read32(D8M6_REG_DSI_INT_CTRL) & (1u << 0)) break;
 		xzs_d8p2_delay_us(10);
 	}
 	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | (1u << 0));
 
-	/* 4. Format 4-byte Short DCS Read packet with BTA */
+	/* 5. Format 4-byte Short DCS Read packet with BTA */
 	/*
-	 * buf[0] = dcs_cmd (e.g. 0x0A)
+	 * buf[0] = dcs_cmd (e.g. 0x04 or 0x0A)
 	 * buf[1] = 0x00
 	 * buf[2] = 0x06 (DTYPE_DCS_READ)
 	 * buf[3] = 0xA0 (0x80 LAST | 0x20 BTA)
 	 */
 	uint32_t pkt_dword = (uint32_t)dcs_cmd | (0x00u << 8) | (0x06u << 16) | (0xA0u << 24);
 
-	/* 5. Reset TPG DMA FIFO before loading read command */
+	/* 6. Reset TPG DMA FIFO before loading read command */
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
 	xzs_d8p2_delay_us(5);
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
 
-	/* 6. Set CMD_DMA_TPG_EN, TPG_DMA_FIFO_MODE and custom pattern */
+	/* 7. Set CMD_DMA_TPG_EN, TPG_DMA_FIFO_MODE and custom pattern */
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, (1u << 1) | (1u << 2) | (0x3u << 16));
 
-	/* 7. Load command DWORD into TPG DMA FIFO (padded to 2 DWORDs) */
+	/* 8. Load command DWORD into TPG DMA FIFO (padded to 2 DWORDs) */
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, pkt_dword);
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, 0);
 
-	/* 8. Program DMA Controller: Low Power Mode + Embedded Mode */
+	/* 9. Program DMA Controller: Low Power Mode + Embedded Mode */
 	uint32_t dma_ctrl_val = D8M6_DMA_CTRL_EMBEDDED_MODE | D8M6_DMA_CTRL_LOW_POWER;
 	d8m4_write32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL, dma_ctrl_val);
 
-	/* 9. Program DMA Length = 4 bytes */
+	/* 10. Program DMA Length = 4 bytes */
 	d8m4_write32(D8M6_REG_DSI_DMA_CMD_LENGTH, 4);
 
-	/* 10. Enable DMA_DONE (bit 1) and BTA_DONE (bit 21) masks and clear previous done flags */
+	/* 11. Enable DMA_DONE (bit 1) and BTA_DONE (bit 21) masks and clear previous done flags */
 	uint32_t int_ctrl = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
 	int_ctrl |= (1u << 1) | (1u << 0) | (1u << 21) | (1u << 20);
 	d8m4_write32(D8M6_REG_DSI_INT_CTRL, int_ctrl);
 
 	__asm__ volatile("dsb sy; isb" ::: "memory");
 
-	/* 11. Trigger DMA Transmission */
+	/* 12. Trigger DMA Transmission */
 	uint64_t t_start = xzs_d8m5_read_cntvct();
 	d8m4_write32(D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER, D8M6_DMA_SW_TRIGGER_VAL);
 
-	/* 12. Bounded poll for DMA completion (30 ms timeout) */
-	uint64_t timeout_ticks = ((uint64_t)30000 * 192ULL) / 10ULL;
+	/* 13. Bounded poll for DMA completion (50 ms timeout) */
+	uint64_t timeout_ticks = ((uint64_t)50000 * 192ULL) / 10ULL;
 	bool completed = false;
 	uint32_t isr_status = 0;
 
 	while (1) {
 		xzs_watchdog_pet();
 		isr_status = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
-		if ((isr_status & (1u << 0)) != 0) { /* DMA_CMD_DONE */
+		if ((isr_status & (1u << 0)) != 0 || (isr_status & (1u << 20)) != 0) { /* DMA_CMD_DONE or BTA_DONE */
 			completed = true;
 			break;
 		}
@@ -622,27 +656,145 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, uint32_t *out_rdbk0, uint32_t *out_rdbk1, uin
 	/* Wait 2 ms for BTA line reversal and RX FIFO latching */
 	xzs_d8p2_delay_us(2000);
 
-	/* 13. Read readback count, data registers, and error status */
+	/* 14. Read readback count, data registers, and error status */
 	uint32_t rdbk_ctrl = d8m4_read32(0x009941d4u);
 	uint32_t cnt = (rdbk_ctrl >> 16) & 0xffffu;
 	uint32_t rdbk0 = d8m4_read32(D8M6_REG_DSI_RDBK_DATA0);
 	uint32_t rdbk1 = d8m4_read32(0x00994070u);
+	uint32_t rdbk2 = d8m4_read32(0x00994074u);
+	uint32_t rdbk3 = d8m4_read32(0x00994078u);
 	uint32_t ack_err = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
+	uint32_t to_stat = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
 
-	*out_cnt = cnt;
-	*out_rdbk0 = rdbk0;
-	if (out_rdbk1) *out_rdbk1 = rdbk1;
-	if (out_ack_err) *out_ack_err = ack_err;
+	out->rc = completed ? 0 : -1;
+	out->cnt = cnt;
+	out->r0 = rdbk0;
+	out->r1 = rdbk1;
+	out->r2 = rdbk2;
+	out->r3 = rdbk3;
+	out->ack_err = ack_err;
+	out->to_stat = to_stat;
 
-	/* 14. If DMA timed out, execute controller soft reset to restore clean DSI link state */
+	/* 15. Decode raw bytes in direct Little-Endian order */
+	out->raw_bytes[0]  = (uint8_t)((rdbk0 >> 0)  & 0xffu);
+	out->raw_bytes[1]  = (uint8_t)((rdbk0 >> 8)  & 0xffu);
+	out->raw_bytes[2]  = (uint8_t)((rdbk0 >> 16) & 0xffu);
+	out->raw_bytes[3]  = (uint8_t)((rdbk0 >> 24) & 0xffu);
+	out->raw_bytes[4]  = (uint8_t)((rdbk1 >> 0)  & 0xffu);
+	out->raw_bytes[5]  = (uint8_t)((rdbk1 >> 8)  & 0xffu);
+	out->raw_bytes[6]  = (uint8_t)((rdbk1 >> 16) & 0xffu);
+	out->raw_bytes[7]  = (uint8_t)((rdbk1 >> 24) & 0xffu);
+	out->raw_bytes[8]  = (uint8_t)((rdbk2 >> 0)  & 0xffu);
+	out->raw_bytes[9]  = (uint8_t)((rdbk2 >> 8)  & 0xffu);
+	out->raw_bytes[10] = (uint8_t)((rdbk2 >> 16) & 0xffu);
+	out->raw_bytes[11] = (uint8_t)((rdbk2 >> 24) & 0xffu);
+	out->raw_bytes[12] = (uint8_t)((rdbk3 >> 0)  & 0xffu);
+	out->raw_bytes[13] = (uint8_t)((rdbk3 >> 8)  & 0xffu);
+	out->raw_bytes[14] = (uint8_t)((rdbk3 >> 16) & 0xffu);
+	out->raw_bytes[15] = (uint8_t)((rdbk3 >> 24) & 0xffu);
+
+	/* 16. Decode bytes according to Linux mdss_dsi_cmd_dma_rx() descending ntohl */
+	uint32_t rdbk_arr[4] = { rdbk0, rdbk1, rdbk2, rdbk3 };
+	uint32_t num_w = (cnt > 0) ? ((cnt + 3) >> 2) : 1;
+	if (num_w > 4) num_w = 4;
+	for (int i = 0; i < 16; i++) out->linux_bytes[i] = 0;
+	int off_idx = (int)num_w - 1;
+	int l_idx = 0;
+	for (uint32_t i = 0; i < num_w; i++) {
+		uint32_t d = rdbk_arr[off_idx];
+		out->linux_bytes[l_idx + 0] = (uint8_t)((d >> 24) & 0xffu);
+		out->linux_bytes[l_idx + 1] = (uint8_t)((d >> 16) & 0xffu);
+		out->linux_bytes[l_idx + 2] = (uint8_t)((d >> 8)  & 0xffu);
+		out->linux_bytes[l_idx + 3] = (uint8_t)((d >> 0)  & 0xffu);
+		l_idx += 4;
+		off_idx--;
+	}
+
+	out->pkt_type = out->linux_bytes[0] ? out->linux_bytes[0] : out->raw_bytes[0];
+
+	if (completed && cnt > 0 && ack_err == 0) {
+		out->is_valid = true;
+		if (dcs_cmd == 0x04u) {
+			/* Long Read: Look for 0x1C header and 84 72 09 payload */
+			const uint8_t *p = out->linux_bytes;
+			if (cnt < 16) p = out->linux_bytes + (16 - cnt);
+			if (p[0] == 0x1Cu || p[0] == 0x1Au) {
+				out->pkt_type = p[0];
+				out->payload_len = 3;
+				out->payload[0] = p[4];
+				out->payload[1] = p[5];
+				out->payload[2] = p[6];
+			} else if (out->raw_bytes[0] == 0x1Cu || out->raw_bytes[0] == 0x1Au) {
+				out->pkt_type = out->raw_bytes[0];
+				out->payload_len = 3;
+				out->payload[0] = out->raw_bytes[4];
+				out->payload[1] = out->raw_bytes[5];
+				out->payload[2] = out->raw_bytes[6];
+			} else {
+				/* Scan for 0x1C header */
+				bool found = false;
+				for (int i = 0; i <= 8; i++) {
+					if (out->linux_bytes[i] == 0x1Cu) {
+						out->pkt_type = 0x1Cu;
+						out->payload_len = 3;
+						out->payload[0] = out->linux_bytes[i+4];
+						out->payload[1] = out->linux_bytes[i+5];
+						out->payload[2] = out->linux_bytes[i+6];
+						found = true;
+						break;
+					}
+					if (out->raw_bytes[i] == 0x1Cu) {
+						out->pkt_type = 0x1Cu;
+						out->payload_len = 3;
+						out->payload[0] = out->raw_bytes[i+4];
+						out->payload[1] = out->raw_bytes[i+5];
+						out->payload[2] = out->raw_bytes[i+6];
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					out->pkt_type = p[0];
+					out->payload_len = 3;
+					out->payload[0] = p[4];
+					out->payload[1] = p[5];
+					out->payload[2] = p[6];
+				}
+			}
+		} else {
+			/* Short Read: check Linux buffer or raw buffer for 0x21/0x11/0x22 */
+			if (out->linux_bytes[0] == 0x21u || out->linux_bytes[0] == 0x11u ||
+			    out->linux_bytes[0] == 0x22u || out->linux_bytes[0] == 0x12u) {
+				out->pkt_type = out->linux_bytes[0];
+				out->payload_len = 1;
+				out->payload[0] = out->linux_bytes[1];
+			} else if (out->raw_bytes[0] == 0x21u || out->raw_bytes[0] == 0x11u ||
+			           out->raw_bytes[0] == 0x22u || out->raw_bytes[0] == 0x12u) {
+				out->pkt_type = out->raw_bytes[0];
+				out->payload_len = 1;
+				out->payload[0] = out->raw_bytes[1];
+			} else if (((rdbk0 >> 24) & 0xffu) == 0x21u) {
+				out->pkt_type = 0x21u;
+				out->payload_len = 1;
+				out->payload[0] = (uint8_t)((rdbk0 >> 16) & 0xffu);
+			} else {
+				out->pkt_type = out->linux_bytes[0];
+				out->payload_len = 1;
+				out->payload[0] = out->linux_bytes[1] ? out->linux_bytes[1] : out->raw_bytes[1];
+			}
+		}
+	}
+
+	/* 16. If DMA timed out, execute controller soft reset to restore clean DSI link state */
 	if (!completed) {
 		d8m4_write32(D8M6_REG_DSI_SOFT_RESET, 1);
 		xzs_d8p2_delay_us(10);
 		d8m4_write32(D8M6_REG_DSI_SOFT_RESET, 0);
 	}
 
-	/* 15. Restore trigger ctrl and clock ctrl */
+	/* 17. Restore trigger ctrl, mdp ctrl and clock ctrl */
 	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig);
+	d8m4_write32(0x00994040u, orig_mdp_ctrl);
 	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk);
 
 	/* Reset TPG DMA FIFO after transaction */
