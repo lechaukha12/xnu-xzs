@@ -505,6 +505,126 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 }
 
 /*
+ * Safe DSI DCS Read Routine for MSM8996 (F17 Phase B)
+ * Transmits short DCS read command with BTA enabled, and polls for RDBK return payload.
+ */
+static int
+xzs_d8m6_read_dcs(uint8_t dcs_cmd, uint32_t *out_rdbk0, uint32_t *out_rdbk1, uint32_t *out_cnt, uint32_t *out_ack_err)
+{
+	if (!out_rdbk0 || !out_cnt) {
+		return -1;
+	}
+	*out_rdbk0 = 0;
+	if (out_rdbk1) *out_rdbk1 = 0;
+	*out_cnt = 0;
+	if (out_ack_err) *out_ack_err = 0;
+
+	/* 1. Clear RDBK_DATA registers via DSI_RDBK_DATA_CTRL (0x009941d4) */
+	d8m4_write32(0x009941d4u, 0x00000001u);
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+	d8m4_write32(0x009941d4u, 0x00000000u);
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+
+	/* 2. Format 4-byte Short DCS Read packet with BTA */
+	/*
+	 * buf[0] = dcs_cmd (e.g. 0x0A)
+	 * buf[1] = 0x00
+	 * buf[2] = 0x06 (DTYPE_DCS_READ)
+	 * buf[3] = 0xA0 (0x80 LAST | 0x20 BTA)
+	 */
+	uint32_t pkt_dword = (uint32_t)dcs_cmd | (0x00u << 8) | (0x06u << 16) | (0xA0u << 24);
+
+	/* 3. Ensure DSI trigger controls select Software Trigger while preserving TE route bit 31 */
+	uint32_t orig_trig = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig | 0x00000004u);
+
+	/* 4. Ensure dynamic force-on clock bits are enabled in DSI_CLK_CTRL */
+	uint32_t orig_clk = d8m4_read32(D8M6_REG_DSI_CLK_CTRL);
+	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk | (1u << 8) | (1u << 9) | (1u << 11) | (1u << 21));
+
+	/* 5. Reset TPG DMA FIFO before loading */
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+
+	/* 6. Set CMD_DMA_TPG_EN, TPG_DMA_FIFO_MODE and custom pattern: (BIT(1) | BIT(2) | (0x3 << 16)) */
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, (1u << 1) | (1u << 2) | (0x3u << 16));
+
+	/* 7. Load command DWORD into TPG DMA FIFO (padded to 2 DWORDs) */
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, pkt_dword);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, 0);
+
+	/* 8. Program DMA Controller: Low Power Mode + Embedded Mode */
+	uint32_t dma_ctrl_val = D8M6_DMA_CTRL_EMBEDDED_MODE | D8M6_DMA_CTRL_LOW_POWER;
+	d8m4_write32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL, dma_ctrl_val);
+
+	/* 9. Program DMA Length = 4 bytes */
+	d8m4_write32(D8M6_REG_DSI_DMA_CMD_LENGTH, 4);
+
+	/* 10. Enable DMA_DONE (bit 1) and BTA_DONE (bit 21) masks and clear previous done flags */
+	uint32_t int_ctrl = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
+	int_ctrl |= (1u << 1) | (1u << 0) | (1u << 21) | (1u << 20);
+	d8m4_write32(D8M6_REG_DSI_INT_CTRL, int_ctrl);
+
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+
+	/* 11. Trigger DMA Transmission */
+	uint64_t t_start = xzs_d8m5_read_cntvct();
+	d8m4_write32(D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER, D8M6_DMA_SW_TRIGGER_VAL);
+
+	/* 12. Bounded poll for DMA completion (50 ms timeout) */
+	uint64_t timeout_ticks = ((uint64_t)50000 * 192ULL) / 10ULL;
+	bool completed = false;
+	uint32_t isr_status = 0;
+
+	while (1) {
+		xzs_watchdog_pet();
+		isr_status = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
+		if ((isr_status & (1u << 0)) != 0) { /* DMA_CMD_DONE */
+			completed = true;
+			break;
+		}
+		uint64_t cur = xzs_d8m5_read_cntvct();
+		if ((cur - t_start) >= timeout_ticks) {
+			break;
+		}
+		xzs_d8p2_delay_us(10);
+	}
+
+	/* Wait 2 ms for BTA line reversal and RX FIFO latching */
+	xzs_d8p2_delay_us(2000);
+
+	/* 13. Read readback count, data registers, and error status */
+	uint32_t rdbk_ctrl = d8m4_read32(0x009941d4u);
+	uint32_t cnt = (rdbk_ctrl >> 16) & 0xffffu;
+	uint32_t rdbk0 = d8m4_read32(D8M6_REG_DSI_RDBK_DATA0);
+	uint32_t rdbk1 = d8m4_read32(0x00994070u);
+	uint32_t ack_err = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
+
+	*out_cnt = cnt;
+	*out_rdbk0 = rdbk0;
+	if (out_rdbk1) *out_rdbk1 = rdbk1;
+	if (out_ack_err) *out_ack_err = ack_err;
+
+	/* 14. Restore trigger ctrl and clock ctrl */
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig);
+	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk);
+
+	/* Reset TPG DMA FIFO after transaction */
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+
+	/* Clear DMA_DONE and BTA_DONE flags */
+	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | (1u << 0) | (1u << 20));
+
+	return completed ? 0 : -1;
+}
+
+
+/*
  * Helper: Power up panel to idle state using D8-M5 sequence
  * Steps: VDDIO -> LAB -> IBB -> Reset Low 10ms -> Reset High 10ms.
  */
