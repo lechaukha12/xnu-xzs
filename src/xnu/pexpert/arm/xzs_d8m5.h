@@ -855,4 +855,98 @@ xzs_d8m5_run(void)
 	return 0;
 }
 
+/*
+ * ============================================================================
+ * Milestone D8-M8.5: PMI8994 QPNP WLED Backlight Driver (Section 38)
+ * ============================================================================
+ * SPMI SID 3 (PMI8994_SID_REGULATORS)
+ * Base Addresses: CTRL 0xD800, SINK 0xD900
+ */
+#define PMI8994_PERIPH_WLED_CTRL    0xD800u
+#define PMI8994_PERIPH_WLED_SINK    0xD900u
+
+#define WLED_CTRL_REG_FAULT_STATUS  0x15u
+#define WLED_CTRL_REG_ENABLE        0x46u
+#define WLED_CTRL_REG_VREF          0x49u
+#define WLED_CTRL_REG_BOOST_DUTY    0x4bu
+#define WLED_CTRL_REG_SWITCH_FREQ   0x4cu
+#define WLED_CTRL_REG_OVP           0x4du
+#define WLED_CTRL_REG_ILIM          0x4eu
+
+#define WLED_SINK_REG_ENABLE        0x46u
+#define WLED_SINK_REG_SYNC          0x47u
+
+#define WLED_SINK_STR_MOD_EN(i)     (0x50u + (uint16_t)(i) * 0x10u)
+#define WLED_SINK_STR_CURR(i)       (0x52u + (uint16_t)(i) * 0x10u)
+#define WLED_SINK_STR_BR_LSB(i)     (0x57u + (uint16_t)(i) * 0x10u)
+#define WLED_SINK_STR_BR_MSB(i)     (0x58u + (uint16_t)(i) * 0x10u)
+
+static int
+xzs_wled_set_brightness(uint16_t brightness)
+{
+	if (xzs_spmi_init() != 0) {
+		xzs_diag_emit("!!! [WLED] SPMI init failed!\n");
+		return -1;
+	}
+
+	/* Clamp brightness to 12-bit max (4095) */
+	if (brightness > 4095u) brightness = 4095u;
+
+	/* 1. Clear fault status */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_FAULT_STATUS, 0x00u);
+
+	/* 2. Configure boost converter parameters from authentic device tree */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_BOOST_DUTY, 0x1au); /* 26 ns boost duty */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_SWITCH_FREQ, 0x85u); /* 800 kHz switch freq */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_OVP, 0x01u);        /* 29.5V OVP */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_ILIM, 0x82u);       /* 660 mA current limit */
+
+	/* 3. Enable Sink Module */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_REG_ENABLE, 0x80u);
+
+	/* 4. Configure each of the 3 LED strings (0, 1, 2) */
+	for (int i = 0; i < 3; i++) {
+		xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_STR_MOD_EN(i), 0x80u); /* Modulator enable */
+		xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_STR_CURR(i), 0x14u);   /* 20 mA full-scale */
+		xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_STR_BR_LSB(i), (uint8_t)(brightness & 0xffu));
+		xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_STR_BR_MSB(i), (uint8_t)((brightness >> 8) & 0x0fu));
+	}
+
+	/* 5. Latch brightness into hardware via SYNC register */
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_REG_SYNC, 0x0fu);
+	xzs_d8p2_delay_us(800u);
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_REG_SYNC, 0x00u);
+
+	/* 6. Enable/Disable WLED module */
+	uint8_t ctrl_val = (brightness > 0) ? 0x80u : 0x00u;
+	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_ENABLE, ctrl_val);
+	xzs_d8p2_delay_us(10000u);
+
+	xzs_diag_emit("[WLED] Set brightness=");
+	xzs_d8m5_dec32((uint32_t)brightness);
+	xzs_diag_emit(" (CTRL=0x");
+	xzs_d8p2_hex8(ctrl_val);
+	xzs_diag_emit(")\n");
+
+	return 0;
+}
+
+static void
+xzs_wled_status(void)
+{
+	uint8_t ctrl_en = 0, sink_en = 0, fault = 0, str0_lsb = 0, str0_msb = 0;
+	if (xzs_spmi_init() == 0) {
+		xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_ENABLE, &ctrl_en);
+		xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_REG_ENABLE, &sink_en);
+		xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_CTRL + WLED_CTRL_REG_FAULT_STATUS, &fault);
+		xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_STR_BR_LSB(0), &str0_lsb);
+		xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_WLED_SINK + WLED_SINK_STR_BR_MSB(0), &str0_msb);
+	}
+	xzs_diag_emit("[WLED-STATUS] CTRL_EN=0x"); xzs_d8p2_hex8(ctrl_en);
+	xzs_diag_emit(" SINK_EN=0x"); xzs_d8p2_hex8(sink_en);
+	xzs_diag_emit(" FAULT=0x"); xzs_d8p2_hex8(fault);
+	xzs_diag_emit(" STR0_BR=0x"); xzs_d8p2_hex8(str0_msb); xzs_d8p2_hex8(str0_lsb);
+	xzs_diag_emit("\n");
+}
+
 #endif /* _XZS_D8M5_H_ */

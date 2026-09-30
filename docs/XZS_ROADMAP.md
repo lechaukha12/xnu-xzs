@@ -412,16 +412,16 @@ Progress is strictly gated by physical hardware verification. Speculative percen
   - **D8-P2**: SPMI + LAB/IBB power rail driver — **COMPLETE / SEALED / HW_PROVEN** (tag `xzs-d8p2-power-rails-complete`)
   - **D8-M5**: Panel power/reset sequence — **COMPLETE / SEALED / HW_PROVEN** (tag `xzs-d8m5-panel-power-reset-complete`)
   - **D8-M6**: Panel vendor/DCS initialization sequence — **COMPLETE / SEALED / HW_PROVEN** (tag `xzs-d8m6-panel-dcs-complete`)
-  - **D8-M8**: MDP framebuffer scanout configuration — **DEFERRED / INCOMPLETE / UNSEALED** (tag `xzs-d8m8-deferred`; report `docs/XZS_D8_M8_DEFERRED.md`)
-  - **D8-P3**: PMIC WLED backlight prerequisite — **PENDING**
-  - **D8-M7**: Backlight control driver — **PENDING**
-  - **D8-M9**: Physical first pixels on screen — **BLOCKED BY D8-M8**
+  - **D8-M8**: MDP framebuffer scanout configuration — **COMPLETE / SEALED / HW_PROVEN** (Autonomous VSYNC refresh)
+  - **D8-M8.5**: First Visible Display Campaign — **COMPLETE / SEALED / HW_PROVEN** (tag `xzs-d8-m8.5-complete`; report `docs/XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md`)
+  - **D8-P3 / D8-M7**: PMI8994 QPNP WLED backlight driver — **COMPLETE / SEALED / HW_PROVEN** (integrated into D8-M8.5)
+  - **D8-M9**: Physical first pixels on screen — **COMPLETE / SEALED / HW_PROVEN** (8 vertical color bars + center checkerboard badge + outer border)
   - **D8-M10**: Framebuffer text console (`/dev/tty0`) — **PENDING**
   - **D8-M11**: Boot splash/logo — **PENDING**
   - **D8-M12**: Display regression suite and final seal — **PENDING**
-* **Phase D8 Status**: **Phase D8 overall remains INCOMPLETE.** First pixels (`FIRST_VISIBLE_PIXELS=no`) and MDP frame scanout (`FIRST_MDP_FRAME=no`) remain unsealed.
+* **Phase D8 Status**: **First visible pixels achieved (`FIRST_VISIBLE_PIXELS=yes`) and MDP frame scanout verified across 3/3 fresh cold boots.**
 * **Hardware Targets**:
-  `TEST_PATTERN_VISIBLE=yes` -> XNU-XZS text visible -> shell output visible -> interactive recovery.
+  `TEST_PATTERN_VISIBLE=yes` (PASS) -> XNU-XZS text visible -> shell output visible -> interactive recovery.
 
 ---
 

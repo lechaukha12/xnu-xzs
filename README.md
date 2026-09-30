@@ -82,11 +82,11 @@ D8-P1      TLMM GPIO prerequisite            COMPLETE
 D8-P2      SPMI + LAB/IBB power rails        COMPLETE
 D8-M5      Panel power/reset sequence        COMPLETE
 D8-M6      Panel vendor/DCS init sequence    COMPLETE
-D8-M8      MDP scanout / command transport   EXHAUSTED (IN-CELL INTERLOCK ISOLATED)
-D8-P3      PMIC WLED backlight prerequisite  PENDING
+D8-M8      MDP scanout / command transport   COMPLETE (AUTONOMOUS VSYNC SCANOUT)
+D8-M8.5    First Visible Display (WLED/DCS)  COMPLETE (PHYSICAL PIXELS HARDWARE PROVEN)
 ```
 
-Tags that name durable milestones: `xzs-d7t1-complete`, `xzs-d7t2-full-complete`, `xzs-d8-m1-complete`, `xzs-d8-m2-complete`, `xzs-d8m3-display-pll-phy-complete`, `xzs-d8m4-dsi-host-complete`, `xzs-d8p1-gpio-complete`, `xzs-d8p2-power-rails-complete`, `xzs-d8m5-panel-power-reset-complete`, `xzs-d8m6-panel-dcs-complete`, `xzs-d8m8-deferred`.
+Tags that name durable milestones: `xzs-d7t1-complete`, `xzs-d7t2-full-complete`, `xzs-d8-m1-complete`, `xzs-d8-m2-complete`, `xzs-d8m3-display-pll-phy-complete`, `xzs-d8m4-dsi-host-complete`, `xzs-d8p1-gpio-complete`, `xzs-d8p2-power-rails-complete`, `xzs-d8m5-panel-power-reset-complete`, `xzs-d8m6-panel-dcs-complete`, `xzs-d8-m8.5-complete`.
 
 ## Generic Native Mach-O Execution (Phase D7-T2)
 

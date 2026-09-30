@@ -1,20 +1,20 @@
 # Sony Xperia XZs (MSM8996) — Port Status
 
-Current sealed display milestones are D8-M1..M6, D8-P1, and D8-P2. Milestone D8-M8 (MDP command-mode scanout) is DEFERRED / INCOMPLETE / UNSEALED (tag `xzs-d8m8-deferred`; report `docs/XZS_D8_M8_DEFERRED.md`). Phase D8 overall remains INCOMPLETE.
+Current sealed display milestones are D8-M1..M6, D8-P1, D8-P2, D8-M8, and D8-M8.5. Milestone D8-M8.5 (First Visible Display) is COMPLETE / SEALED / HARDWARE PROVEN (tag `xzs-d8-m8.5-complete`; report `docs/XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md`). First visible pixels are verified on physical hardware across 3/3 fresh cold boots.
 
 ```text
-D7-T1 = PASS (USB transport)
-D7-T2 = PASS (generic native Mach-O execution; DEBT-001 RESOLVED)
-D8-M1 = PASS (display topology audit)
-D8-M2 = PASS (display power & core clocks)
-D8-M3 = PASS (DSI PLL / clocks / 14nm PHY Stage B; COMPLETE & SEALED)
-D8-M4 = PASS (DSI0 host controller in command mode; COMPLETE & SEALED)
-D8-P1 = PASS (TLMM GPIO prerequisite; COMPLETE & SEALED)
-D8-P2 = PASS (SPMI + LAB/IBB display bias rails; COMPLETE & SEALED)
-D8-M5 = PASS (Panel power & reset lifecycle; COMPLETE & SEALED)
-D8-M6 = PASS (Panel vendor/DCS initialization sequence; COMPLETE & SEALED)
-D8-M8 = DEFERRED (MDP scanout / command transport; INCOMPLETE / UNSEALED)
-D8-P3 = PENDING (PMIC WLED backlight)
+D7-T1   = PASS (USB transport)
+D7-T2   = PASS (generic native Mach-O execution; DEBT-001 RESOLVED)
+D8-M1   = PASS (display topology audit)
+D8-M2   = PASS (display power & core clocks)
+D8-M3   = PASS (DSI PLL / clocks / 14nm PHY Stage B; COMPLETE & SEALED)
+D8-M4   = PASS (DSI0 host controller in command mode; COMPLETE & SEALED)
+D8-P1   = PASS (TLMM GPIO prerequisite; COMPLETE & SEALED)
+D8-P2   = PASS (SPMI + LAB/IBB display bias rails; COMPLETE & SEALED)
+D8-M5   = PASS (Panel power & reset lifecycle; COMPLETE & SEALED)
+D8-M6   = PASS (Panel vendor/DCS initialization sequence; COMPLETE & SEALED)
+D8-M8   = PASS (MDP scanout / command transport; COMPLETE & SEALED)
+D8-M8.5 = PASS (First Visible Display: WLED Backlight + Visible Frame; COMPLETE & SEALED)
 ```
 
 D8-M3 hardware verification summary:

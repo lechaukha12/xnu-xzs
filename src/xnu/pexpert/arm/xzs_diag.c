@@ -971,6 +971,18 @@ xzs_diag_dispatch(uint64_t which, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 	case 60:
 		xzs_d8m8_vsync_clock_on();
 		break;
+	case 61:
+		xzs_wled_set_brightness(arg1 ? (uint16_t)arg1 : 1200u);
+		break;
+	case 62:
+		xzs_wled_set_brightness(0u);
+		break;
+	case 63:
+		xzs_wled_status();
+		break;
+	case 64:
+		xzs_d8m6_panel_shutdown();
+		break;
 	default:
 		xzs_diag_emit("[XZS-D8M1] unknown diag\n");
 		break;
