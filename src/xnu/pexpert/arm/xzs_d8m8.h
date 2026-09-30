@@ -607,6 +607,7 @@ xzs_d8m8_r11a_emit_all(void)
 	xzs_diag_emit("--- R11C PASSIVE HANDSHAKE SNAPSHOTS ---\n");
 	for (uint32_t n = 0; n < XZS_R11A_SNAPSHOT_COUNT; n++) {
 		xzs_watchdog_pet();
+		xzs_d8p2_delay_us(1000);
 		uint32_t i = order[n];
 		if (!g_m8_r11a_snapshot_valid[i]) continue;
 		struct xzs_d8m8_r11a_snapshot *s = &g_m8_r11a_snapshots[i];
@@ -1020,6 +1021,7 @@ xzs_d8m8_r11db_emit(void)
 	xzs_diag_emit("--- R11DB PASSIVE PP GATE SAMPLES ---\n");
 	for (uint32_t i = 0; i < g_r11db_count; i++) {
 		xzs_watchdog_pet();
+		xzs_d8p2_delay_us(500);
 		struct xzs_d8m8_r11db_sample *s = &g_r11db_samples[i];
 		const char *kind = (s->kind < 5u) ? kinds[s->kind] : "?";
 		xzs_diag_emit("R11DB_SAMPLE KIND="); xzs_diag_emit(kind);
@@ -2011,8 +2013,10 @@ xzs_d8m8_stream_config(void)
 	/* Step 3: Enable tear check */
 	xzs_m8_write_reg("PP0_TEAR_CHECK_EN ", 0x00971000u, 0x00000001u, 0x00000001u, false);
 
-	/* Step 3b: Enable PingPong 0 Autorefresh per Sony LK 0xaa01cb28 and mdss_mdp_intf_cmd.c:893 */
-	xzs_m8_write_reg("PP0_AUTOREFRESH   ", 0x00971030u, 0x80000001u, 0x80000001u, false);
+	/* F16 Step 3b: Authentic Panel 9 leaves PP0 Autorefresh disabled (0x00000000) per Sony LK binary proof */
+	xzs_m8_write_reg("PP0_AUTOREFRESH   ", 0x00971030u, 0x00000000u, 0x00000000u, false);
+	uint32_t ar_after_pp = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_AFTER_PP_CONFIG=0x"); xzs_d8p1_hex32(ar_after_pp); xzs_diag_emit("\n");
 
 	/* DSI0 Host MDP Stream: Restored to 0x06100006 (MSM8996 MDP command mode stream enable + packing/interleave, matching TWRP golden) */
 	xzs_m8_write_reg("DSI_CMD_MDP_CTRL  ", 0x00994040u, 0x06100006u, 0x06100006u, false);
@@ -2337,7 +2341,7 @@ xzs_d8m8_prekick_status(void)
 	                    (pp0_start_pos == 0x00000004u) &&
 	                    (pp0_rd_ptr_irq == 0x00000781u) &&
 	                    (pp0_wr_ptr_irq == 0x00000000u) &&
-	                    ((pp0_autorefresh == 0x00000000u) || (pp0_autorefresh == 0x80000001u));
+	                    (pp0_autorefresh == 0x00000000u);
 	bool wrcount_consistent = (pp0_sync_wrcount == (pp0_start_pos + (pp0_sync_thresh & 0xffffu) + 1u));
 
 	bool ready = g_m8_panel_ready && wrcount_consistent &&
@@ -2427,12 +2431,15 @@ xzs_d8m8_kickoff(void)
 	if (frq == 0) frq = 19200000ULL;
 
 	/* Pre-kick interrupt cleanup: Read PRE_CLEAR_INTR_STATUS, clear 0x00011100 (bits 8, 12, 16), re-read POST_CLEAR_INTR_STATUS */
+	uint32_t ar_pre_clear = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_PRE_CLEAR=0x"); xzs_d8p1_hex32(ar_pre_clear); xzs_diag_emit("\n");
+
 	uint32_t pre_intr = d8p1_read32(0x00901014u);
 	xzs_diag_emit("PRE_CLEAR_INTR_STATUS=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("PRE_INTR_STATUS=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 	xzs_diag_emit("INTR_STATUS_PRE=0x"); xzs_d8p1_hex32(pre_intr); xzs_diag_emit("\n");
 
-	/* F15: Set PP0 Autorefresh per authentic Sony LK Panel 9 path (autorefresh disabled) */
+	/* F16: Set PP0 Autorefresh per authentic Sony LK Panel 9 path (autorefresh disabled) */
 	d8p1_write32(0x00971030u, 0x00000000u);
 	xzs_diag_emit("PANEL9_LK_PP_AUTOREFRESH_VALUE=0x00000000\n");
 	xzs_diag_emit("PANEL9_AUTOREFRESH_SOURCE_PROVEN=YES\n");
@@ -2708,11 +2715,14 @@ xzs_d8m8_kickoff(void)
 	xzs_d8m8_r11a_capture(4);
 	xzs_d8m8_r11e_capture(0x1140u);
 
+	uint32_t ar_pre_ctl = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_PRE_CTL_START=0x"); xzs_d8p1_hex32(ar_pre_ctl); xzs_diag_emit("\n");
+
 	/* Capture the timing origin before the sole kickoff write. */
 	uint64_t start_cycles = 0;
 	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(start_cycles));
 	uint64_t ctl_start_us = (start_cycles * 1000000ULL) / frq;
-	xzs_diag_emit("F15_CTL_START_WRITE: timestamp_us="); xzs_d8m8_dec(ctl_start_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F16_CTL_START_WRITE: timestamp_us="); xzs_d8m8_dec(ctl_start_us); xzs_diag_emit("\n");
 	xzs_diag_emit("CTL_START_TIMESTAMP_US="); xzs_d8m8_dec(ctl_start_us); xzs_diag_emit("\n");
 
 	/* WRITE EXACTLY ONCE: *(volatile uint32_t *)0x0090201c = 0x00000001 */
@@ -2720,6 +2730,9 @@ xzs_d8m8_kickoff(void)
 	g_m8_ctl_start_count = 1;
 	g_m8_kickoff_count = 1;
 	xzs_diag_emit("CTL_START_COUNT=1\n");
+
+	uint32_t ar_post_ctl = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_POST_CTL_START=0x"); xzs_d8p1_hex32(ar_post_ctl); xzs_diag_emit("\n");
 
 	g_f1_metrics.trig_ctrl_post_ctl_start = d8p1_read32(0x00994084u);
 	xzs_diag_emit("TRIG_CTRL_POST_CTL_START=0x"); xzs_d8p1_hex32(g_f1_metrics.trig_ctrl_post_ctl_start); xzs_diag_emit("\n");
@@ -2731,20 +2744,26 @@ xzs_d8m8_kickoff(void)
 	/* Sony LK Post-On SLPOUT Dispatch (mdss_dsi_post_on: 0xaa020018) */
 	uint64_t post_on_cycles = xzs_d8m5_read_cntvct();
 	uint64_t post_on_us = (post_on_cycles * 1000000ULL) / frq;
-	xzs_diag_emit("F15_POST_ON_BEGIN: timestamp_us="); xzs_d8m8_dec(post_on_us); xzs_diag_emit("\n");
-	xzs_diag_emit("F15_SLPOUT_DMA_BEGIN\n");
+	xzs_diag_emit("F16_POST_ON_BEGIN: timestamp_us="); xzs_d8m8_dec(post_on_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F16_SLPOUT_DMA_BEGIN\n");
+
+	uint32_t ar_pre_slp = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_PRE_SLPOUT=0x"); xzs_d8p1_hex32(ar_pre_slp); xzs_diag_emit("\n");
 
 	g_f1_metrics.trig_ctrl_pre_slpout = d8p1_read32(0x00994084u);
 	xzs_diag_emit("TRIG_CTRL_PRE_SLPOUT=0x"); xzs_d8p1_hex32(g_f1_metrics.trig_ctrl_pre_slpout); xzs_diag_emit("\n");
 
 	uint64_t slpout_cycles = xzs_d8m5_read_cntvct();
 	uint64_t slpout_us = (slpout_cycles * 1000000ULL) / frq;
-	xzs_diag_emit("F15_SLPOUT_TX: timestamp_us="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F16_SLPOUT_TX: timestamp_us="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
 	xzs_diag_emit("SLPOUT_TIMESTAMP_US="); xzs_d8m8_dec(slpout_us); xzs_diag_emit("\n");
 
 	int slp_rc = xzs_d8m6_transmit_cmd(&s_cmd_slpout, 0);
 	g_m8_slpout_sent = (slp_rc == 0);
 	xzs_diag_emit("SLPOUT_SENT="); xzs_diag_emit(g_m8_slpout_sent ? "yes\n" : "no\n");
+
+	uint32_t ar_post_slp = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_POST_SLPOUT=0x"); xzs_d8p1_hex32(ar_post_slp); xzs_diag_emit("\n");
 
 	g_f1_metrics.trig_ctrl_post_slpout = d8p1_read32(0x00994084u);
 	xzs_diag_emit("TRIG_CTRL_POST_SLPOUT=0x"); xzs_d8p1_hex32(g_f1_metrics.trig_ctrl_post_slpout); xzs_diag_emit("\n");
@@ -2753,7 +2772,7 @@ xzs_d8m8_kickoff(void)
 	xzs_d8p2_delay_us(120000);
 	uint64_t settle_cycles = xzs_d8m5_read_cntvct();
 	uint64_t settle_us = (settle_cycles * 1000000ULL) / frq;
-	xzs_diag_emit("F15_SLPOUT_SETTLE_DONE: timestamp_us="); xzs_d8m8_dec(settle_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F16_SLPOUT_SETTLE_DONE: timestamp_us="); xzs_d8m8_dec(settle_us); xzs_diag_emit("\n");
 	xzs_diag_emit("SLPOUT_SETTLE_DONE_TIMESTAMP_US="); xzs_d8m8_dec(settle_us); xzs_diag_emit("\n");
 	xzs_diag_emit("SLPOUT_DELAY_US=120000\n");
 
@@ -2877,10 +2896,10 @@ xzs_d8m8_kickoff(void)
 		}
 	}
 	/*
-	 * F15: Window B passive high-frequency observation for at least 250 ms (260 ms).
+	 * F16: Window B passive high-frequency observation for 300-400 ms (360 ms).
 	 * High-frequency sampling of GPIO10 pad, distinct RD_PTR/WR_PTR, and PP line counters.
 	 */
-	uint64_t target_260ms_c = start_cycles + (260000ULL * frq) / 1000000ULL;
+	uint64_t target_360ms_c = start_cycles + (360000ULL * frq) / 1000000ULL;
 	while (1) {
 		xzs_watchdog_pet();
 		uint64_t c;
@@ -2895,12 +2914,12 @@ xzs_d8m8_kickoff(void)
 			seen_dsi_mdp_done_raw = true;
 			first_dsi_mdp_done_us = dsi_poll_us;
 		}
-		if (c >= target_260ms_c) break;
+		if (c >= target_360ms_c) break;
 	}
 
 	uint64_t t_obs_end = xzs_d8m5_read_cntvct();
 	uint64_t obs_end_us = (t_obs_end * 1000000ULL) / frq;
-	xzs_diag_emit("F15_OBSERVATION_END: timestamp_us="); xzs_d8m8_dec(obs_end_us); xzs_diag_emit("\n");
+	xzs_diag_emit("F16_OBSERVATION_END: timestamp_us="); xzs_d8m8_dec(obs_end_us); xzs_diag_emit("\n");
 	g_f1_metrics.observation_window_us = ((t_obs_end - start_cycles) * 1000000ULL) / frq;
 
 	/* Capture the final state before any post-kickoff breadcrumb or USB output. */
@@ -3111,9 +3130,12 @@ xzs_d8m8_kickoff(void)
 	bool trig_match = (g_f1_metrics.trig_ctrl_post_slpout == 0x80000004u) && (g_f1_metrics.trig_ctrl_final == 0x80000004u);
 	xzs_diag_emit("POST_SLPOUT_TRIG_CTRL_MATCH="); xzs_diag_emit(trig_match ? "YES\n" : "NO\n");
 
-	bool f15_causal = (g_f1_metrics.gpio10_transitions > 0);
-	xzs_diag_emit("PANEL9_POST_KICK_SLPOUT_CAUSAL_TO_PHYSICAL_TE="); xzs_diag_emit(f15_causal ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
-	xzs_diag_emit("EXACT_PANEL9_KICKOFF_POSTON_LIFECYCLE_NOT_SUFFICIENT="); xzs_diag_emit(f15_causal ? "NOT_PROVEN\n" : "YES_HW_PROVEN\n");
+	uint32_t ar_final = d8p1_read32(0x00971030u);
+	xzs_diag_emit("AUTOREFRESH_FINAL=0x"); xzs_d8p1_hex32(ar_final); xzs_diag_emit("\n");
+
+	bool f16_causal = (g_f1_metrics.gpio10_transitions > 0);
+	xzs_diag_emit("PANEL9_AUTOREFRESH_DIVERGENCE_CAUSAL_TO_TE="); xzs_diag_emit(f16_causal ? "YES_HW_PROVEN\n" : "NO_HW_PROVEN\n");
+	xzs_diag_emit("AUTHENTIC_PANEL9_AUTOREFRESH_CORRECTION_NOT_SUFFICIENT_FOR_TE="); xzs_diag_emit(f16_causal ? "NOT_PROVEN\n" : "YES_HW_PROVEN\n");
 
 	uint64_t elapsed_us = g_f1_metrics.observation_window_us;
 	xzs_diag_emit("OBSERVATION_ELAPSED_US="); xzs_d8m8_dec(elapsed_us); xzs_diag_emit("\n");
