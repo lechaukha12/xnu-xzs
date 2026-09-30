@@ -745,6 +745,15 @@ struct xzs_f1_te_metrics {
 	uint32_t wr_ptr_asserted_sample_count;
 	uint32_t wr_ptr_distinct_event_count;
 	bool     wr_ptr_latched;
+	/* F15 Post-Kick SLPOUT & Trigger Tracking */
+	uint64_t gpio10_first_high_us;
+	uint64_t gpio10_first_transition_us;
+	bool     rd_ptr_correlates_with_gpio10;
+	uint32_t trig_ctrl_pre_kick;
+	uint32_t trig_ctrl_post_ctl_start;
+	uint32_t trig_ctrl_pre_slpout;
+	uint32_t trig_ctrl_post_slpout;
+	uint32_t trig_ctrl_final;
 };
 static struct xzs_f1_te_metrics g_f1_metrics;
 

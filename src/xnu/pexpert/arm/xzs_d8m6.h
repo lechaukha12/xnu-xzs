@@ -362,8 +362,9 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 		return 0;
 	}
 
-	/* 1. Ensure DSI trigger controls select Software Trigger (dma_cmd_trigger = TRIGGER_SW = 0x4) */
-	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
+	/* 1. Ensure DSI trigger controls select Software Trigger while preserving TE route bit 31 */
+	uint32_t orig_trig = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig | 0x00000004u);
 
 	/* 2. Ensure dynamic force-on clock bits are enabled in DSI_CLK_CTRL */
 	uint32_t orig_clk = d8m4_read32(D8M6_REG_DSI_CLK_CTRL);
@@ -439,8 +440,9 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 	xzs_d8p2_delay_us(5);
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
 
-	/* Restore clock control */
+	/* Restore clock control and trigger control */
 	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig);
 
 	/* Acknowledge/clear completion interrupt (W1C) */
 	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | D8M6_INT_CTRL_DMA_DONE);
