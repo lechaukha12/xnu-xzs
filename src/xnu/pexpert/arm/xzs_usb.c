@@ -989,8 +989,12 @@ xzs_usb_console_write(const unsigned char *buf, int len)
 		return;
 	}
 	for (i = 0; i < len; i++) {
-		if (!xzs_tx_enqueue(buf[i])) {
-			break;
+		for (int retry = 0; retry < 50; retry++) {
+			if (xzs_tx_enqueue(buf[i])) {
+				break;
+			}
+			xzs_tx_kick();
+			delay(20);
 		}
 	}
 	xzs_tx_kick();
@@ -1004,9 +1008,12 @@ int xzs_usb_send_bulk_in(const uint8_t *data, uint32_t len)
 		return -1;
 	}
 	for (i = 0; i < len; i++) {
-		if (!xzs_tx_enqueue(data[i])) {
+		for (int retry = 0; retry < 50; retry++) {
+			if (xzs_tx_enqueue(data[i])) {
+				break;
+			}
 			xzs_tx_kick();
-			return (int)i;
+			delay(20);
 		}
 	}
 	xzs_tx_kick();

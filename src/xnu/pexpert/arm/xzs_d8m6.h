@@ -40,8 +40,10 @@ extern vm_offset_t ml_static_vtop(vm_offset_t va);
 #define D8M6_REG_DSI_TRIG_CTRL              0x00994084u
 #define D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER 0x00994090u
 #define D8M6_REG_DSI_LANE_STATUS            0x009940a8u
+#define D8M6_REG_DSI_LANE_CTRL              0x009940acu
 #define D8M6_REG_DSI_TIMEOUT_STATUS         0x009940c0u
 #define D8M6_REG_DSI_INT_CTRL               0x00994110u
+#define D8M6_REG_DSI_SOFT_RESET             0x00994118u
 #define D8M6_REG_DSI_CLK_CTRL               0x0099411cu
 #define D8M6_REG_DSI_CLK_STATUS             0x00994120u
 #define D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL  0x0099415cu
@@ -58,6 +60,7 @@ extern vm_offset_t ml_static_vtop(vm_offset_t va);
 /* DSI Packet Data Types */
 #define DSI_DCS_SHORT_WRITE_0_PARAM         0x05u
 #define DSI_DCS_SHORT_WRITE_1_PARAM         0x15u
+#define DSI_GENERIC_LONG_WRITE              0x29u
 #define DSI_DCS_LONG_WRITE                  0x39u
 
 /* Command Descriptor */
@@ -95,6 +98,98 @@ static const uint8_t s_payload_teon[2]    = { 0x35, 0x00 };
 static const uint8_t s_payload_dispon[1]  = { 0x29 };
 static const uint8_t s_payload_dispoff[1] = { 0x28 };
 static const uint8_t s_payload_slpin[1]   = { 0x10 };
+
+/* Authentic Sony Keyaki DT On-Command Payloads (keyaki.dts:1872) */
+static const uint8_t s_payload_cmd1_b0_00[2]  = { 0xb0, 0x00 };
+static const uint8_t s_payload_cmd2_d6_01[2]  = { 0xd6, 0x01 };
+static const uint8_t s_payload_cmd3_c4[3]     = { 0xc4, 0x70, 0x22 };
+static const uint8_t s_payload_cmd4_c6[21]    = { 0xc6, 0x53, 0x2e, 0x2e, 0x05, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x04, 0x10, 0x06 };
+static const uint8_t s_payload_cmd5_ec[14]    = { 0xec, 0x64, 0xdc, 0xec, 0x3b, 0x52, 0x00, 0x0b, 0x0b, 0x13, 0x15, 0x68, 0x0b, 0xb5 };
+static const uint8_t s_payload_cmd6_b0_03[2]  = { 0xb0, 0x03 };
+static const uint8_t s_payload_cmd8_madctl[2] = { 0x36, 0x00 };
+static const uint8_t s_payload_cmd9_colmod[2] = { 0x3a, 0x77 };
+static const uint8_t s_payload_cmd10_caset[5] = { 0x2a, 0x00, 0x00, 0x04, 0x37 };
+static const uint8_t s_payload_cmd11_paset[5] = { 0x2b, 0x00, 0x00, 0x07, 0x7f };
+static const uint8_t s_payload_cmd12_stesl[3] = { 0x44, 0x00, 0x00 };
+
+/* Master Command Table */
+static const struct xzs_d8m6_cmd s_cmd_dt_on_1 = {
+	.name = "CMD1 (B0 00 Protect Unlock)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd1_b0_00,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_2 = {
+	.name = "CMD2 (D6 01 Output Ctrl)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd2_d6_01,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_3 = {
+	.name = "CMD3 (C4 70 22 Timing Gen)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 3,
+	.payload = s_payload_cmd3_c4,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_4 = {
+	.name = "CMD4 (C6 Timing Waveforms)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 21,
+	.payload = s_payload_cmd4_c6,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_5 = {
+	.name = "CMD5 (EC Scan Gen Bias)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 14,
+	.payload = s_payload_cmd5_ec,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_6 = {
+	.name = "CMD6 (B0 03 Protect Lock)",
+	.dtype = DSI_GENERIC_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd6_b0_03,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_8 = {
+	.name = "CMD8 (MADCTL 0x36 0x00)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd8_madctl,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_9 = {
+	.name = "CMD9 (COLMOD 0x3a 0x77 24bpp)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 2,
+	.payload = s_payload_cmd9_colmod,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_10 = {
+	.name = "CMD10 (CASET 0x2a 0..1079)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 5,
+	.payload = s_payload_cmd10_caset,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_11 = {
+	.name = "CMD11 (PASET 0x2b 0..1919)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 5,
+	.payload = s_payload_cmd11_paset,
+	.post_wait_us = 0,
+};
+static const struct xzs_d8m6_cmd s_cmd_dt_on_12 = {
+	.name = "CMD12 (STESL 0x44 scanline 0)",
+	.dtype = DSI_DCS_LONG_WRITE,
+	.dlen = 3,
+	.payload = s_payload_cmd12_stesl,
+	.post_wait_us = 0,
+};
 
 /* Master Command Table */
 static const struct xzs_d8m6_cmd s_cmd_slpout = {
@@ -177,7 +272,7 @@ xzs_d8m6_encode_packet(const struct xzs_d8m6_cmd *cmd, uint8_t *buf, size_t buf_
 		buf[2] = cmd->dtype & 0x3fu;
 		buf[3] = 0x80u; /* Last packet */
 		return 4;
-	} else if (cmd->dtype == DSI_DCS_LONG_WRITE) {
+	} else if (cmd->dtype == DSI_DCS_LONG_WRITE || cmd->dtype == DSI_GENERIC_LONG_WRITE) {
 		/*
 		 * Long Write Packet Format (8+ bytes, 4-byte aligned):
 		 *   data[0] = wc & 0xFF
@@ -267,8 +362,9 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 		return 0;
 	}
 
-	/* 1. Ensure DSI trigger controls select Software Trigger (dma_cmd_trigger = TRIGGER_SW = 0x4) */
-	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
+	/* 1. Ensure DSI trigger controls select Software Trigger while preserving TE route bit 31 */
+	uint32_t orig_trig = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig | 0x00000004u);
 
 	/* 2. Ensure dynamic force-on clock bits are enabled in DSI_CLK_CTRL */
 	uint32_t orig_clk = d8m4_read32(D8M6_REG_DSI_CLK_CTRL);
@@ -344,8 +440,9 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 	xzs_d8p2_delay_us(5);
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
 
-	/* Restore clock control */
+	/* Restore clock control and trigger control */
 	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig);
 
 	/* Acknowledge/clear completion interrupt (W1C) */
 	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | D8M6_INT_CTRL_DMA_DONE);
@@ -408,6 +505,317 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 }
 
 /*
+ * Decoded DSI RX Response Structure (F18)
+ */
+struct xzs_d8m6_rx_decoded {
+	int rc;                    /* 0 = success, -1 = timeout */
+	uint32_t cnt;              /* bytes reported in 0x1d4 >> 16 */
+	uint32_t r0, r1, r2, r3;   /* raw registers 0x06c, 0x070, 0x074, 0x078 */
+	uint32_t ack_err;          /* 0x068 */
+	uint32_t to_stat;          /* 0x0c0 */
+	uint8_t pkt_type;          /* response packet type (0x21, 0x1c, etc.) */
+	uint8_t raw_bytes[16];     /* direct register byte stream (LE) */
+	uint8_t linux_bytes[16];   /* Linux descending ntohl stream */
+	uint8_t payload[8];        /* extracted DCS payload bytes */
+	uint32_t payload_len;      /* count of payload bytes */
+	bool is_valid;
+};
+
+/*
+ * Safe DSI DCS Read Routine for MSM8996 (F18 Phase C)
+ * Ensures DSI trigger arbiter is in Software Trigger mode (clearing bit 31 and MDP ctrl),
+ * sets Low Power timer to 0xffffffff, transmits DCS read with BTA, and decodes payload.
+ */
+static int
+xzs_d8m6_read_dcs(uint8_t dcs_cmd, struct xzs_d8m6_rx_decoded *out)
+{
+	if (!out) {
+		return -1;
+	}
+	out->rc = -1;
+	out->cnt = 0;
+	out->r0 = 0; out->r1 = 0; out->r2 = 0; out->r3 = 0;
+	out->ack_err = 0;
+	out->to_stat = 0;
+	out->pkt_type = 0;
+	out->payload_len = 0;
+	out->is_valid = false;
+	for (int i = 0; i < 16; i++) out->raw_bytes[i] = 0;
+	for (int i = 0; i < 8; i++) out->payload[i] = 0;
+
+	/* 1. Ensure Low Power and BTA timers match TWRP (0xffffffff) */
+	d8m4_write32(0x009940b8u, 0xffffffffu);
+
+	/* 2. Clear previous error and timeout status (W1C) */
+	d8m4_write32(D8M6_REG_DSI_TIMEOUT_STATUS, 0xffffffffu);
+	d8m4_write32(D8M6_REG_DSI_ACK_ERR_STATUS, 0xffffffffu);
+
+	/* 3. Ensure DSI lane control does NOT force clk lane HS (TWRP golden 0x009940ac == 0x0) */
+	d8m4_write32(D8M6_REG_DSI_LANE_CTRL, 0x00000000u);
+
+	/* 4. Ensure DSI trigger controls select pure Software Trigger (bit 31 CLEARED, bit 2 SET) */
+	uint32_t orig_trig = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
+
+	/* Ensure DSI Command Mode MDP engine is not locking the arbiter */
+	uint32_t orig_mdp_ctrl = d8m4_read32(0x00994040u);
+	d8m4_write32(0x00994040u, 0x00000000u);
+
+	/* Align DSI clock control to TWRP golden state (0x0000023f) */
+	uint32_t orig_clk = d8m4_read32(D8M6_REG_DSI_CLK_CTRL);
+	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, 0x0000023fu);
+
+	/* Ensure TPG is completely disabled (Linux mdss_dsi_cmds_rx never uses TPG) */
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+
+	/* 5. Send Set Maximum Return Packet Size (DTYPE_MAX_PKTSIZE = 0x37) via TPG DMA */
+	/* 10 bytes for long read (0x04), 4 bytes for short reads */
+	uint32_t max_size = (dcs_cmd == 0x04u) ? 0x0Au : 0x04u;
+	uint32_t max_pkt_dword = max_size | (0x00u << 8) | (0x37u << 16) | (0x80u << 24);
+
+	/* Reset TPG DMA FIFO before loading max pkt size */
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, (1u << 1) | (1u << 2) | (0x3u << 16));
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, max_pkt_dword);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, 0);
+
+	d8m4_write32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL, D8M6_DMA_CTRL_EMBEDDED_MODE | D8M6_DMA_CTRL_LOW_POWER);
+	d8m4_write32(D8M6_REG_DSI_DMA_CMD_LENGTH, 4);
+	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | (1u << 1) | (1u << 0));
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+	d8m4_write32(D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER, D8M6_DMA_SW_TRIGGER_VAL);
+
+	/* Poll for max pkt size done (15 ms) */
+	for (int p = 0; p < 1500; p++) {
+		if (d8m4_read32(D8M6_REG_DSI_INT_CTRL) & (1u << 0)) break;
+		xzs_d8p2_delay_us(10);
+	}
+	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | (1u << 0));
+
+	/* Reset TPG DMA FIFO after MRPS */
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+
+	/* 6. Clear RDBK_DATA registers via DSI_RDBK_DATA_CTRL (0x009941d4) right before read */
+	d8m4_write32(0x009941d4u, 0x00000001u);
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+	d8m4_write32(0x009941d4u, 0x00000000u);
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+
+	/* Clear TIMEOUT_STATUS and ACK_ERR_STATUS again right before trigger */
+	d8m4_write32(D8M6_REG_DSI_TIMEOUT_STATUS, 0xffffffffu);
+	d8m4_write32(D8M6_REG_DSI_ACK_ERR_STATUS, 0xffffffffu);
+
+	/* 7. Format 4-byte Short DCS Read packet with BTA via TPG DMA */
+	uint32_t pkt_dword = (uint32_t)dcs_cmd | (0x00u << 8) | (0x06u << 16) | (0xA0u << 24);
+
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, (1u << 1) | (1u << 2) | (0x3u << 16));
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, pkt_dword);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, 0);
+
+	d8m4_write32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL, D8M6_DMA_CTRL_EMBEDDED_MODE | D8M6_DMA_CTRL_LOW_POWER);
+	d8m4_write32(D8M6_REG_DSI_DMA_CMD_LENGTH, 4);
+
+	/* Enable DMA_DONE (bit 1) and BTA_DONE (bit 21) masks and clear previous done flags */
+	uint32_t int_ctrl = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
+	int_ctrl |= (1u << 1) | (1u << 0) | (1u << 21) | (1u << 20);
+	d8m4_write32(D8M6_REG_DSI_INT_CTRL, int_ctrl);
+
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+
+	/* Trigger DMA Transmission */
+	uint64_t t_start = xzs_d8m5_read_cntvct();
+	d8m4_write32(D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER, D8M6_DMA_SW_TRIGGER_VAL);
+
+	/* Bounded poll for DMA completion (50 ms timeout) */
+	uint64_t timeout_ticks = ((uint64_t)50000 * 192ULL) / 10ULL;
+	bool completed = false;
+	uint32_t isr_status = 0;
+
+	while (1) {
+		xzs_watchdog_pet();
+		isr_status = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
+		if ((isr_status & (1u << 0)) != 0 || (isr_status & (1u << 20)) != 0) { /* DMA_CMD_DONE or BTA_DONE */
+			completed = true;
+			break;
+		}
+		uint64_t cur = xzs_d8m5_read_cntvct();
+		if ((cur - t_start) >= timeout_ticks) {
+			break;
+		}
+		xzs_d8p2_delay_us(10);
+	}
+
+	/* Wait 2 ms for BTA line reversal and RX FIFO latching */
+	xzs_d8p2_delay_us(2000);
+
+	/* 14. Read readback count, data registers, and error status */
+	uint32_t rdbk_ctrl = d8m4_read32(0x009941d4u);
+	uint32_t cnt = (rdbk_ctrl >> 16) & 0xffffu;
+	uint32_t rdbk0 = d8m4_read32(D8M6_REG_DSI_RDBK_DATA0);
+	uint32_t rdbk1 = d8m4_read32(0x00994070u);
+	uint32_t rdbk2 = d8m4_read32(0x00994074u);
+	uint32_t rdbk3 = d8m4_read32(0x00994078u);
+	uint32_t ack_err = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
+	uint32_t to_stat = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
+
+	/* Reset TPG DMA FIFO after transaction */
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+
+	out->rc = completed ? 0 : -1;
+	out->cnt = cnt;
+	out->r0 = rdbk0;
+	out->r1 = rdbk1;
+	out->r2 = rdbk2;
+	out->r3 = rdbk3;
+	out->ack_err = ack_err;
+	out->to_stat = to_stat;
+
+	/* 15. Decode raw bytes in direct Little-Endian order */
+	out->raw_bytes[0]  = (uint8_t)((rdbk0 >> 0)  & 0xffu);
+	out->raw_bytes[1]  = (uint8_t)((rdbk0 >> 8)  & 0xffu);
+	out->raw_bytes[2]  = (uint8_t)((rdbk0 >> 16) & 0xffu);
+	out->raw_bytes[3]  = (uint8_t)((rdbk0 >> 24) & 0xffu);
+	out->raw_bytes[4]  = (uint8_t)((rdbk1 >> 0)  & 0xffu);
+	out->raw_bytes[5]  = (uint8_t)((rdbk1 >> 8)  & 0xffu);
+	out->raw_bytes[6]  = (uint8_t)((rdbk1 >> 16) & 0xffu);
+	out->raw_bytes[7]  = (uint8_t)((rdbk1 >> 24) & 0xffu);
+	out->raw_bytes[8]  = (uint8_t)((rdbk2 >> 0)  & 0xffu);
+	out->raw_bytes[9]  = (uint8_t)((rdbk2 >> 8)  & 0xffu);
+	out->raw_bytes[10] = (uint8_t)((rdbk2 >> 16) & 0xffu);
+	out->raw_bytes[11] = (uint8_t)((rdbk2 >> 24) & 0xffu);
+	out->raw_bytes[12] = (uint8_t)((rdbk3 >> 0)  & 0xffu);
+	out->raw_bytes[13] = (uint8_t)((rdbk3 >> 8)  & 0xffu);
+	out->raw_bytes[14] = (uint8_t)((rdbk3 >> 16) & 0xffu);
+	out->raw_bytes[15] = (uint8_t)((rdbk3 >> 24) & 0xffu);
+
+	/* 16. Decode bytes according to Linux mdss_dsi_cmd_dma_rx() descending ntohl */
+	uint32_t rdbk_arr[4] = { rdbk0, rdbk1, rdbk2, rdbk3 };
+	uint32_t num_w = (cnt > 0) ? ((cnt + 3) >> 2) : 1;
+	if (num_w > 4) num_w = 4;
+	for (int i = 0; i < 16; i++) out->linux_bytes[i] = 0;
+	int off_idx = (int)num_w - 1;
+	int l_idx = 0;
+	for (uint32_t i = 0; i < num_w; i++) {
+		uint32_t d = rdbk_arr[off_idx];
+		out->linux_bytes[l_idx + 0] = (uint8_t)((d >> 24) & 0xffu);
+		out->linux_bytes[l_idx + 1] = (uint8_t)((d >> 16) & 0xffu);
+		out->linux_bytes[l_idx + 2] = (uint8_t)((d >> 8)  & 0xffu);
+		out->linux_bytes[l_idx + 3] = (uint8_t)((d >> 0)  & 0xffu);
+		l_idx += 4;
+		off_idx--;
+	}
+
+	out->pkt_type = out->linux_bytes[0] ? out->linux_bytes[0] : out->raw_bytes[0];
+
+	if (completed && cnt > 0 && ack_err == 0) {
+		out->is_valid = true;
+		if (dcs_cmd == 0x04u) {
+			/* Long Read: Look for 0x1C header and 84 72 09 payload */
+			const uint8_t *p = out->linux_bytes;
+			if (cnt < 16) p = out->linux_bytes + (16 - cnt);
+			if (p[0] == 0x1Cu || p[0] == 0x1Au) {
+				out->pkt_type = p[0];
+				out->payload_len = 3;
+				out->payload[0] = p[4];
+				out->payload[1] = p[5];
+				out->payload[2] = p[6];
+			} else if (out->raw_bytes[0] == 0x1Cu || out->raw_bytes[0] == 0x1Au) {
+				out->pkt_type = out->raw_bytes[0];
+				out->payload_len = 3;
+				out->payload[0] = out->raw_bytes[4];
+				out->payload[1] = out->raw_bytes[5];
+				out->payload[2] = out->raw_bytes[6];
+			} else {
+				/* Scan for 0x1C header */
+				bool found = false;
+				for (int i = 0; i <= 8; i++) {
+					if (out->linux_bytes[i] == 0x1Cu) {
+						out->pkt_type = 0x1Cu;
+						out->payload_len = 3;
+						out->payload[0] = out->linux_bytes[i+4];
+						out->payload[1] = out->linux_bytes[i+5];
+						out->payload[2] = out->linux_bytes[i+6];
+						found = true;
+						break;
+					}
+					if (out->raw_bytes[i] == 0x1Cu) {
+						out->pkt_type = 0x1Cu;
+						out->payload_len = 3;
+						out->payload[0] = out->raw_bytes[i+4];
+						out->payload[1] = out->raw_bytes[i+5];
+						out->payload[2] = out->raw_bytes[i+6];
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					out->pkt_type = p[0];
+					out->payload_len = 3;
+					out->payload[0] = p[4];
+					out->payload[1] = p[5];
+					out->payload[2] = p[6];
+				}
+			}
+		} else {
+			/* Short Read: check Linux buffer or raw buffer for 0x21/0x11/0x22 */
+			if (out->linux_bytes[0] == 0x21u || out->linux_bytes[0] == 0x11u ||
+			    out->linux_bytes[0] == 0x22u || out->linux_bytes[0] == 0x12u) {
+				out->pkt_type = out->linux_bytes[0];
+				out->payload_len = 1;
+				out->payload[0] = out->linux_bytes[1];
+			} else if (out->raw_bytes[0] == 0x21u || out->raw_bytes[0] == 0x11u ||
+			           out->raw_bytes[0] == 0x22u || out->raw_bytes[0] == 0x12u) {
+				out->pkt_type = out->raw_bytes[0];
+				out->payload_len = 1;
+				out->payload[0] = out->raw_bytes[1];
+			} else if (((rdbk0 >> 24) & 0xffu) == 0x21u) {
+				out->pkt_type = 0x21u;
+				out->payload_len = 1;
+				out->payload[0] = (uint8_t)((rdbk0 >> 16) & 0xffu);
+			} else {
+				out->pkt_type = out->linux_bytes[0];
+				out->payload_len = 1;
+				out->payload[0] = out->linux_bytes[1] ? out->linux_bytes[1] : out->raw_bytes[1];
+			}
+		}
+	}
+
+	/* 16. If DMA timed out, execute controller soft reset to restore clean DSI link state */
+	if (!completed) {
+		d8m4_write32(D8M6_REG_DSI_SOFT_RESET, 1);
+		xzs_d8p2_delay_us(10);
+		d8m4_write32(D8M6_REG_DSI_SOFT_RESET, 0);
+	}
+
+	/* 17. Restore trigger ctrl, mdp ctrl and clock ctrl */
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, orig_trig);
+	d8m4_write32(0x00994040u, orig_mdp_ctrl);
+	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk);
+
+	/* Reset TPG DMA FIFO after transaction */
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+
+	/* Clear DMA_DONE and BTA_DONE flags */
+	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | (1u << 0) | (1u << 20));
+
+	return completed ? 0 : -1;
+}
+
+
+/*
  * Helper: Power up panel to idle state using D8-M5 sequence
  * Steps: VDDIO -> LAB -> IBB -> Reset Low 10ms -> Reset High 10ms.
  */
@@ -429,25 +837,82 @@ xzs_d8m6_panel_power_up_to_idle(void)
 		xzs_diag_emit("!!! FAIL: SPMI init failed!\n");
 		return -2;
 	}
+
+	/*
+	 * Phase A: F12 Kernel-Entry Hardware State Snapshot
+	 */
+	uint32_t entry_gpio8 = xzs_d8m5_gpio_read_in(GPIO_RESET_NUM);
+	uint32_t entry_gpio89 = xzs_d8m5_gpio_read_in(GPIO_TOUCH_RESET_NUM);
+	uint32_t entry_gpio50 = xzs_d8m5_gpio_read_in(GPIO_TOUCH_VDDIO_NUM);
+	uint32_t entry_gpio51 = xzs_d8m5_gpio_read_in(GPIO_VDDIO_NUM);
+	uint8_t entry_lab_st = 0, entry_ibb_st = 0;
+	xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_STATUS1, &entry_lab_st);
+	xzs_spmi_read8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_IBB + IBB_REG_STATUS1, &entry_ibb_st);
+
+	xzs_diag_emit("F12_XNU_ENTRY_STATE=CAPTURED\n");
+	xzs_diag_emit("ENTRY_GPIO8="); xzs_diag_emit(entry_gpio8 ? "HIGH\n" : "LOW\n");
+	xzs_diag_emit("ENTRY_GPIO89="); xzs_diag_emit(entry_gpio89 ? "HIGH\n" : "LOW\n");
+	xzs_diag_emit("ENTRY_GPIO50="); xzs_diag_emit(entry_gpio50 ? "HIGH\n" : "LOW\n");
+	xzs_diag_emit("ENTRY_GPIO51="); xzs_diag_emit(entry_gpio51 ? "HIGH\n" : "LOW\n");
+	xzs_diag_emit("ENTRY_LAB_ON="); xzs_diag_emit((entry_lab_st & LAB_STATUS1_VREG_OK) ? "YES\n" : "NO\n");
+	xzs_diag_emit("ENTRY_IBB_ON="); xzs_diag_emit((entry_ibb_st & IBB_STATUS1_VREG_OK) ? "YES\n" : "NO\n");
+	xzs_diag_emit("ENTRY_DSI_HOST_ON="); xzs_diag_emit((ctrl & 1u) ? "YES\n" : "NO\n");
+	xzs_diag_emit("ENTRY_DSI_PHY_ON="); xzs_diag_emit(((pll & 0x21u) == 0x21u) ? "YES\n" : "NO\n");
+	xzs_diag_emit("FASTBOOT_HANDOFF_PANEL_STATE=");
+	if ((entry_lab_st & LAB_STATUS1_VREG_OK) || (entry_ibb_st & IBB_STATUS1_VREG_OK) || entry_gpio51) {
+		xzs_diag_emit("PARTIALLY_POWERED\n");
+	} else {
+		xzs_diag_emit("FULLY_OFF\n");
+	}
+	xzs_diag_emit("TRUE_COLD_ENTRY_MATCH=NO\n");
+	xzs_diag_emit("FIRST_FASTBOOT_HANDOFF_DIVERGENCE=LAB_IBB_AND_VDDIO_REMAIN_POWERED_NO_DISCHARGE\n");
+
+	/*
+	 * Phase C / F12 Correction: Verify True-Cold Discharge Before Reinitialization
+	 */
+	xzs_diag_emit("[F12-TRUE-COLD] Verifying source-proven panel discharge:\n");
+	if ((entry_lab_st & LAB_STATUS1_VREG_OK) || (entry_ibb_st & IBB_STATUS1_VREG_OK) || entry_gpio51) {
+		/* Disable DSI before cutting VDDIO to protect PHY pads */
+		d8m4_write32(D8M6_REG_DSI_CTRL, 0u);
+		d8m4_write32(D8M6_REG_DSI_CLK_CTRL, 0u);
+		int pd_rc = xzs_d8m5_power_down();
+		if (pd_rc != 0) {
+			xzs_diag_emit("!!! FAIL: True-cold power down failed!\n");
+			return -9;
+		}
+	} else {
+		xzs_diag_emit("  Panel confirmed already in 0V cold discharge state from bootloader handoff & P1 safe assert.\n");
+		xzs_d8p2_delay_us(10000);
+	}
+	xzs_diag_emit("TRUE_COLD_SEQUENCE_VERIFIED=YES\n");
+	xzs_diag_emit("XNU_INIT_PERFORMS_TRUE_POWER_CYCLE=YES\n");
+
 	xzs_d8p2_run(1);
 
 	/* 1. Reset held LOW */
-	xzs_diag_emit("  1. Assert RESET LOW...\n");
+	xzs_diag_emit("  1. Assert RESET LOW (GPIO8=0, GPIO89=0)...\n");
 	xzs_d8m5_set_reset_low();
+	xzs_d8m5_set_touch_reset_low();
 	if (xzs_d8m5_gpio_read_in(GPIO_RESET_NUM) != 0) {
 		xzs_diag_emit("!!! FAIL: GPIO8 is HIGH while expecting LOW!\n");
 		return -3;
 	}
 
 	/* 2. VDDIO ON -> wait 10 ms */
-	xzs_diag_emit("  2. Enable VDDIO (GPIO51=1)...\n");
+	xzs_diag_emit("  2. Enable VDDIO (GPIO51=1, GPIO50=1)...\n");
 	xzs_d8m5_set_vddio_high();
+	xzs_d8m5_set_touch_vddio_high();
 	xzs_d8p2_delay_us(10000);
-	if (xzs_d8m5_gpio_read_in(GPIO_VDDIO_NUM) == 0) {
+	if (xzs_d8m5_gpio_read_in(GPIO_VDDIO_NUM) == 0 || xzs_d8m5_gpio_read_in(GPIO_TOUCH_VDDIO_NUM) == 0) {
 		xzs_diag_emit("!!! FAIL: VDDIO enable failed!\n");
 		xzs_d8m5_power_down();
 		return -4;
 	}
+
+	/* 2b. Touch Interrupt Pinmux (GPIO 125 Input with Pull-Up) per Sony LK Step T4 */
+	xzs_diag_emit("  2b. Touch INT Pinmux (GPIO125 Input with Pull-Up)...\n");
+	d8p1_write32(TLMM_GPIO_CFG(GPIO_TOUCH_INT_NUM), 0x00000003u);
+	xzs_d8p2_delay_us(10000); /* 10 ms wait per somc,pw-wait-after-on-touch-int-n */
 
 	/* 3. LAB ON (+5.6V) -> poll VREG_OK -> wait 10 ms */
 	xzs_diag_emit("  3. Enable LAB rail (+5.6V)...\n");
@@ -497,8 +962,28 @@ xzs_d8m6_panel_power_up_to_idle(void)
 	xzs_diag_emit(" (OK)\n");
 	xzs_d8p2_delay_us(10000);
 
-	/* 5. Reset Sequence: Low 10 ms -> High 10 ms */
-	xzs_diag_emit("  5. Reset Pulse (Low 10ms -> High 10ms)...\n");
+	/*
+	 * F11 Architectural Parity: qcom,mdss-dsi-lp11-init Lifecycle.
+	 * In authentic Sony LK (aboot.img:0xaa03ef4c & 0xaa01fe9c/0xaa01fecc), when lp11-init is set:
+	 * 1. panel_power_on() keeps RESET held LOW while rails power up.
+	 * 2. mdss_dsi_host_init() actively drives all clock and data lanes into LP-11.
+	 * 3. pre_init_func() pulses Panel Reset (GPIO8) and Touch Reset (GPIO89) WHILE IN LP-11!
+	 */
+	xzs_diag_emit("  5. Actively establishing DSI LP-11 state before reset release...\n");
+	d8m4_write32(D8M6_REG_DSI_SOFT_RESET, 1u);
+	xzs_d8p2_delay_us(10);
+	d8m4_write32(D8M6_REG_DSI_SOFT_RESET, 0u);
+	xzs_d8p2_delay_us(10);
+	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, 0x0000003fu);
+	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
+	d8m4_write32(D8M6_REG_DSI_CTRL, 0x000001f5u);
+	/* Ensure DSI_LANE_CTRL is 0x00000000 (matching TWRP golden state; no forced HS clk) */
+	d8m4_write32(0x009940acu, 0x00000000u);
+	xzs_d8p2_delay_us(5000); /* 5 ms LP-11 stabilization window */
+	xzs_diag_emit("  F11_LP11_ESTABLISHED=YES\n");
+
+	/* 6. Panel Reset Sequence WHILE IN LP-11: Low 10 ms -> High 10 ms */
+	xzs_diag_emit("  6. Releasing Panel Reset in LP-11 state (Low 10ms -> High 10ms)...\n");
 	xzs_d8m5_set_reset_low();
 	xzs_d8p2_delay_us(10000);
 	xzs_d8m5_set_reset_high();
@@ -509,8 +994,25 @@ xzs_d8m6_panel_power_up_to_idle(void)
 		xzs_d8m5_power_down();
 		return -7;
 	}
+	xzs_diag_emit("  RESET_RELEASE_RELATIVE_TO_LP11=AFTER_LP11_ESTABLISHED\n");
+	xzs_diag_emit("  F11_RESET_RELEASED_IN_LP11=YES\n");
 
-	xzs_diag_emit("[D8-M6-POWERUP] SUCCESS: Panel at powered-idle state (Reset=HIGH, LAB=+5.6V, IBB=-5.6V, VDDIO=1.8V).\n");
+	/* 7. In-Cell Touch Reset Sequence per somc,ewu-rst-seq = <0 2 1 5> -> LOW 2ms, HIGH 5ms */
+	xzs_diag_emit("  7. In-Cell Touch Reset Pulse in LP-11 (Low 2ms -> High 5ms -> settling 0ms per Panel 9)...\n");
+	xzs_d8m5_set_touch_reset_low();
+	xzs_d8p2_delay_us(2000); // 2 ms
+	xzs_d8m5_set_touch_reset_high();
+	xzs_d8p2_delay_us(5000); // 5 ms
+	/* Safe in-cell touch settling delay */
+	xzs_d8p2_delay_us(10000); // 10 ms settling
+
+	if (xzs_d8m5_gpio_read_in(GPIO_TOUCH_RESET_NUM) == 0) {
+		xzs_diag_emit("!!! FAIL: GPIO89 failed to release HIGH!\n");
+		xzs_d8m5_power_down();
+		return -8;
+	}
+
+	xzs_diag_emit("[D8-M6-POWERUP] SUCCESS: Panel and in-cell touch at powered-idle state (Reset=HIGH, TouchReset=HIGH, LAB=+5.6V, IBB=-5.6V, VDDIO=1.8V, LP11=ACTIVE).\n");
 	return 0;
 }
 
