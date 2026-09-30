@@ -1,13 +1,34 @@
 # XNU-XZS Current Session Handoff
 
+```text
+CURRENT_PHASE=D8-M10
+CURRENT_MILESTONE=FRAMEBUFFER_TEXT_CONSOLE_SHELL_DISPLAY
+DISPLAY_VISIBLE_PIXELS=HW_PROVEN
+D8_M8=CLOSED_SUPERSEDED_BY_M8_5
+D8_M8_5=SEALED_HW_PROVEN
+D8_M9=SATISFIED_BY_D8_M8_5
+NEXT_OBJECTIVE=render interactive xzs# shell to physical framebuffer/LCD
+```
+
 Current accepted milestones:
+- **D7-T1 (USB Console Transport)**: COMPLETE & SEALED, tag `xzs-d7t1-complete`.
 - **D7-T2 (Native Generic Mach-O Execution)**: COMPLETE & SEALED, tag `xzs-d7t2-full-complete`. DEBT-001 is RESOLVED. Generic external Mach-O execution (`/bin/hello`, `/bin/args` with multiple argv layouts) is hardware-verified across 14 external exec cycles without panic or reset.
 - **D8-M1..M6, D8-P1, D8-P2**: COMPLETE & SEALED on physical hardware.
-- **D8-M8 (MDP Framebuffer Scanout)**: DEFERRED / INCOMPLETE / UNSEALED, tag `xzs-d8m8-deferred`. Final blocker: PingPong0 to DSI command-mode handshake (`ACTIVE-D8-002`). Detailed freeze report: [`docs/XZS_D8_M8_DEFERRED.md`](XZS_D8_M8_DEFERRED.md). Phase D8 overall remains INCOMPLETE.
+- **D8-M8 (MDP Framebuffer Scanout Investigation)**: CLOSED / SUPERSEDED BY D8-M8.5. Historical campaign was EXHAUSTED_NOT_SEALED; acceptance requirement is satisfied by D8-M8.5 hardware proof.
+- **D8-M8.5 (First Visible Display Closure Campaign)**: COMPLETE & SEALED, tag `xzs-d8-m8.5-complete`. Physical Sharp 1080p IPS LCD panel illuminated with 8 color bars, center badge, and border; verified across 3/3 fresh cold boots.
+- **D8-M9 (Physical First Pixels on Screen)**: SATISFIED BY D8-M8.5.
+- **D8-M10 (Framebuffer Text Console / Interactive Shell Display)**: NEXT / ACTIVE.
 
-Do not reopen DEBT-001 (RESOLVED). DEBT-002 and DEBT-003 remain active/deferred. ACTIVE-D8-001 is RESOLVED in [`docs/XZS_BLOCKERS_AND_DEFERRED.md`](XZS_BLOCKERS_AND_DEFERRED.md). ACTIVE-D8-002 (D8-M8 PP0->DSI handshake) is DEFERRED in [`docs/XZS_BLOCKERS_AND_DEFERRED.md`](XZS_BLOCKERS_AND_DEFERRED.md). Entry point: [`README.md`](../README.md). Display notes: [`docs/XZS_DISPLAY_BRINGUP.md`](XZS_DISPLAY_BRINGUP.md).
+Technical debt items:
+- `DISPLAY-DEBT-001`: DSI DCS RX / Bus Turnaround (BTA) Readback Timeout (non-blocking).
+- `DEBT-02`: 88MB safe low-DRAM allocation constraint.
+- `DEBT-03`: Timer-seeded software PRNG.
+- `DEBT-08`: devfs_getattr pointer-hardening bypass (to be re-audited in D9 XZSPlatform).
+
+Entry point: [`README.md`](../README.md). Display reconciliation: [`docs/XZS_D8_M8_FINAL_RECONCILIATION.md`](XZS_D8_M8_FINAL_RECONCILIATION.md). Display first light report: [`docs/XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md`](XZS_D8_M8_5_FIRST_VISIBLE_DISPLAY.md).
 
 The record below is the older D6/D7 handoff and is kept as history.
+
 
 ```text
 FINAL_D6_MAIN_COMMIT=cc297b0e721ea0c002e008a4a330ac1aa3c9a3b3

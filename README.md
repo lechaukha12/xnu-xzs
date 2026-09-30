@@ -82,8 +82,10 @@ D8-P1      TLMM GPIO prerequisite            COMPLETE
 D8-P2      SPMI + LAB/IBB power rails        COMPLETE
 D8-M5      Panel power/reset sequence        COMPLETE
 D8-M6      Panel vendor/DCS init sequence    COMPLETE
-D8-M8      MDP scanout / command transport   COMPLETE (AUTONOMOUS VSYNC SCANOUT)
-D8-M8.5    First Visible Display (WLED/DCS)  COMPLETE (PHYSICAL PIXELS HARDWARE PROVEN)
+D8-M8      MDP command-mode scanout          CLOSED / SUPERSEDED BY D8-M8.5
+D8-M8.5    First Visible Display (WLED/DCS)  COMPLETE / SEALED / HW_PROVEN
+D8-M9      First Visible Pixels              SATISFIED BY D8-M8.5
+D8-M10     Framebuffer Text Console / Shell  NEXT / ACTIVE
 ```
 
 Tags that name durable milestones: `xzs-d7t1-complete`, `xzs-d7t2-full-complete`, `xzs-d8-m1-complete`, `xzs-d8-m2-complete`, `xzs-d8m3-display-pll-phy-complete`, `xzs-d8m4-dsi-host-complete`, `xzs-d8p1-gpio-complete`, `xzs-d8p2-power-rails-complete`, `xzs-d8m5-panel-power-reset-complete`, `xzs-d8m6-panel-dcs-complete`, `xzs-d8-m8.5-complete`.
@@ -272,7 +274,15 @@ Details: [`docs/XZS_DISPLAY_BRINGUP.md`](docs/XZS_DISPLAY_BRINGUP.md), [`docs/XZ
   - D8-M1 display topology audit complete (tag `xzs-d8-m1-complete`).
   - D8-M2 display power domain & core clocks hardware-verified (tag `xzs-d8-m2-complete`).
   - D8-M3 DSI0 PLL, MMCC clock tree, and 14nm PHY hardware-verified (tag `xzs-d8m3-display-pll-phy-complete`).
-* **Next active milestone**: D8-M4 (DSI0 host controller bring-up in command mode).
+  - D8-M4 DSI0 host controller in command mode complete (tag `xzs-d8m4-dsi-host-complete`).
+  - D8-P1 TLMM GPIO prerequisite complete (tag `xzs-d8p1-gpio-complete`).
+  - D8-P2 SPMI + LAB/IBB display bias rails complete (tag `xzs-d8p2-power-rails-complete`).
+  - D8-M5 Panel power & reset sequence complete (tag `xzs-d8m5-panel-power-reset-complete`).
+  - D8-M6 Panel vendor/DCS init sequence complete (tag `xzs-d8m6-panel-dcs-complete`).
+  - D8-M8 MDP command-mode scanout closed/superseded by D8-M8.5.
+  - D8-M8.5 First Visible Display complete and sealed on hardware (tag `xzs-d8-m8.5-complete`). Physical Sharp 1080p IPS LCD panel illuminated with visible test bars across 3/3 fresh cold boots.
+  - D8-M9 First Visible Pixels satisfied by D8-M8.5.
+* **Next active milestone**: D8-M10 (Framebuffer Text Console / Interactive Shell Display).
 
 ---
 
