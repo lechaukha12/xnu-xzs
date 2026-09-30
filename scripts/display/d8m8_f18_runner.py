@@ -23,7 +23,7 @@ from pathlib import Path
 import importlib.util
 
 ROOT = Path(__file__).resolve().parents[2]
-LOG_DIR = ROOT / "artifacts/hw/d8m8/f18-ddic-rx"
+LOG_DIR = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "artifacts/hw/d8m8/final-r1")
 BOOT = ROOT / "artifacts/builds/xzs-xnu-boot.img"
 KERNEL = ROOT / "src/xnu/BUILD/obj/DEVELOPMENT_ARM64_VMAPPLE/kernel.development.vmapple"
 SERIAL = "BH905SX976"
@@ -154,7 +154,7 @@ def main():
 
         note("XZS console connected.\n")
         prompt = False
-        for _ in range(8):
+        for _ in range(15):
             helpers.xzs_console.bulk_write(dev, b"\n", timeout_ms=1000)
             time.sleep(0.4)
             data = helpers.collect(dev, seconds=1.5)

@@ -82,7 +82,7 @@ D8-P1      TLMM GPIO prerequisite            COMPLETE
 D8-P2      SPMI + LAB/IBB power rails        COMPLETE
 D8-M5      Panel power/reset sequence        COMPLETE
 D8-M6      Panel vendor/DCS init sequence    COMPLETE
-D8-M8      MDP scanout / command transport   DEFERRED
+D8-M8      MDP scanout / command transport   EXHAUSTED (IN-CELL INTERLOCK ISOLATED)
 D8-P3      PMIC WLED backlight prerequisite  PENDING
 ```
 
@@ -377,6 +377,7 @@ The modular `XZSPlatform` design ensures that board support and native drivers c
 * [Hardware Verification Guide](docs/XZS_HARDWARE_VERIFICATION.md) — Flashing, testing, and extraction procedures.
 
 ### Sealed Phase Reports & Audits
+* [Phase D8-M8 Final Closure Report](docs/XZS_D8_M8_FINAL_CLOSURE.md) — Comprehensive D8-M8 Final Closure Campaign ledger (R1..R6), proven architectural milestones, and in-cell touch interlock isolation.
 * [Phase D6 Final Userspace Foundation Report](artifacts/reports/D6_FINAL_USERSPACE_FOUNDATION_REPORT.md) — Comprehensive multi-milestone seal and regression report.
 * [Phase D6-M6 Stable PID1 Report](artifacts/reports/D6_M6_STABLE_PID1_REPORT.md) — D6-M6 hardware acceptance report.
 * [Phase D6-M6 Source Audit](docs/D6_M6_STABLE_PID1_SOURCE_AUDIT.md) — File descriptor bootstrap, console call path, and telemetry audit.

@@ -505,9 +505,6 @@ xzs_d8m6_transmit_cmd(const struct xzs_d8m6_cmd *cmd, int is_dryrun)
 }
 
 /*
- * Safe DSI DCS Read Routine for MSM8996 (F17 Phase B)
- * Transmits short DCS read command with BTA enabled, and polls for RDBK return payload.
-/*
  * Decoded DSI RX Response Structure (F18)
  */
 struct xzs_d8m6_rx_decoded {
@@ -549,13 +546,14 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, struct xzs_d8m6_rx_decoded *out)
 	/* 1. Ensure Low Power and BTA timers match TWRP (0xffffffff) */
 	d8m4_write32(0x009940b8u, 0xffffffffu);
 
-	/* 2. Clear RDBK_DATA registers via DSI_RDBK_DATA_CTRL (0x009941d4) */
-	d8m4_write32(0x009941d4u, 0x00000001u);
-	__asm__ volatile("dsb sy; isb" ::: "memory");
-	d8m4_write32(0x009941d4u, 0x00000000u);
-	__asm__ volatile("dsb sy; isb" ::: "memory");
+	/* 2. Clear previous error and timeout status (W1C) */
+	d8m4_write32(D8M6_REG_DSI_TIMEOUT_STATUS, 0xffffffffu);
+	d8m4_write32(D8M6_REG_DSI_ACK_ERR_STATUS, 0xffffffffu);
 
-	/* 3. Ensure DSI trigger controls select pure Software Trigger (bit 31 CLEARED, bit 2 SET) */
+	/* 3. Ensure DSI lane control does NOT force clk lane HS (TWRP golden 0x009940ac == 0x0) */
+	d8m4_write32(D8M6_REG_DSI_LANE_CTRL, 0x00000000u);
+
+	/* 4. Ensure DSI trigger controls select pure Software Trigger (bit 31 CLEARED, bit 2 SET) */
 	uint32_t orig_trig = d8m4_read32(D8M6_REG_DSI_TRIG_CTRL);
 	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
 
@@ -563,10 +561,14 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, struct xzs_d8m6_rx_decoded *out)
 	uint32_t orig_mdp_ctrl = d8m4_read32(0x00994040u);
 	d8m4_write32(0x00994040u, 0x00000000u);
 
+	/* Align DSI clock control to TWRP golden state (0x0000023f) */
 	uint32_t orig_clk = d8m4_read32(D8M6_REG_DSI_CLK_CTRL);
-	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, orig_clk | (1u << 8) | (1u << 9) | (1u << 11) | (1u << 21));
+	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, 0x0000023fu);
 
-	/* 4. Send Set Maximum Return Packet Size (DTYPE_MAX_PKTSIZE = 0x37) */
+	/* Ensure TPG is completely disabled (Linux mdss_dsi_cmds_rx never uses TPG) */
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+
+	/* 5. Send Set Maximum Return Packet Size (DTYPE_MAX_PKTSIZE = 0x37) via TPG DMA */
 	/* 10 bytes for long read (0x04), 4 bytes for short reads */
 	uint32_t max_size = (dcs_cmd == 0x04u) ? 0x0Au : 0x04u;
 	uint32_t max_pkt_dword = max_size | (0x00u << 8) | (0x37u << 16) | (0x80u << 24);
@@ -594,47 +596,44 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, struct xzs_d8m6_rx_decoded *out)
 	}
 	d8m4_write32(D8M6_REG_DSI_INT_CTRL, d8m4_read32(D8M6_REG_DSI_INT_CTRL) | (1u << 0));
 
-	/* 5. Format 4-byte Short DCS Read packet with BTA */
-	/*
-	 * buf[0] = dcs_cmd (e.g. 0x04 or 0x0A)
-	 * buf[1] = 0x00
-	 * buf[2] = 0x06 (DTYPE_DCS_READ)
-	 * buf[3] = 0xA0 (0x80 LAST | 0x20 BTA)
-	 */
-	uint32_t pkt_dword = (uint32_t)dcs_cmd | (0x00u << 8) | (0x06u << 16) | (0xA0u << 24);
-
-	/* 6. Reset TPG DMA FIFO before loading read command */
-	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
+	/* Reset TPG DMA FIFO after MRPS */
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
 	xzs_d8p2_delay_us(5);
 	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
 
-	/* 7. Set CMD_DMA_TPG_EN, TPG_DMA_FIFO_MODE and custom pattern */
+	/* 6. Clear RDBK_DATA registers via DSI_RDBK_DATA_CTRL (0x009941d4) right before read */
+	d8m4_write32(0x009941d4u, 0x00000001u);
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+	d8m4_write32(0x009941d4u, 0x00000000u);
+	__asm__ volatile("dsb sy; isb" ::: "memory");
+
+	/* Clear TIMEOUT_STATUS and ACK_ERR_STATUS again right before trigger */
+	d8m4_write32(D8M6_REG_DSI_TIMEOUT_STATUS, 0xffffffffu);
+	d8m4_write32(D8M6_REG_DSI_ACK_ERR_STATUS, 0xffffffffu);
+
+	/* 7. Format 4-byte Short DCS Read packet with BTA via TPG DMA */
+	uint32_t pkt_dword = (uint32_t)dcs_cmd | (0x00u << 8) | (0x06u << 16) | (0xA0u << 24);
+
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, (1u << 1) | (1u << 2) | (0x3u << 16));
-
-	/* 8. Load command DWORD into TPG DMA FIFO (padded to 2 DWORDs) */
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, pkt_dword);
 	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CMD_DMA_INIT, 0);
 
-	/* 9. Program DMA Controller: Low Power Mode + Embedded Mode */
-	uint32_t dma_ctrl_val = D8M6_DMA_CTRL_EMBEDDED_MODE | D8M6_DMA_CTRL_LOW_POWER;
-	d8m4_write32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL, dma_ctrl_val);
-
-	/* 10. Program DMA Length = 4 bytes */
+	d8m4_write32(D8M6_REG_DSI_COMMAND_MODE_DMA_CTRL, D8M6_DMA_CTRL_EMBEDDED_MODE | D8M6_DMA_CTRL_LOW_POWER);
 	d8m4_write32(D8M6_REG_DSI_DMA_CMD_LENGTH, 4);
 
-	/* 11. Enable DMA_DONE (bit 1) and BTA_DONE (bit 21) masks and clear previous done flags */
+	/* Enable DMA_DONE (bit 1) and BTA_DONE (bit 21) masks and clear previous done flags */
 	uint32_t int_ctrl = d8m4_read32(D8M6_REG_DSI_INT_CTRL);
 	int_ctrl |= (1u << 1) | (1u << 0) | (1u << 21) | (1u << 20);
 	d8m4_write32(D8M6_REG_DSI_INT_CTRL, int_ctrl);
 
 	__asm__ volatile("dsb sy; isb" ::: "memory");
 
-	/* 12. Trigger DMA Transmission */
+	/* Trigger DMA Transmission */
 	uint64_t t_start = xzs_d8m5_read_cntvct();
 	d8m4_write32(D8M6_REG_DSI_CMD_MODE_DMA_SW_TRIGGER, D8M6_DMA_SW_TRIGGER_VAL);
 
-	/* 13. Bounded poll for DMA completion (50 ms timeout) */
+	/* Bounded poll for DMA completion (50 ms timeout) */
 	uint64_t timeout_ticks = ((uint64_t)50000 * 192ULL) / 10ULL;
 	bool completed = false;
 	uint32_t isr_status = 0;
@@ -665,6 +664,12 @@ xzs_d8m6_read_dcs(uint8_t dcs_cmd, struct xzs_d8m6_rx_decoded *out)
 	uint32_t rdbk3 = d8m4_read32(0x00994078u);
 	uint32_t ack_err = d8m4_read32(D8M6_REG_DSI_ACK_ERR_STATUS);
 	uint32_t to_stat = d8m4_read32(D8M6_REG_DSI_TIMEOUT_STATUS);
+
+	/* Reset TPG DMA FIFO after transaction */
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 1);
+	xzs_d8p2_delay_us(5);
+	d8m4_write32(D8M6_REG_DSI_TPG_DMA_FIFO_RESET, 0);
+	d8m4_write32(D8M6_REG_DSI_TEST_PATTERN_GEN_CTRL, 0);
 
 	out->rc = completed ? 0 : -1;
 	out->cnt = cnt;
@@ -904,6 +909,11 @@ xzs_d8m6_panel_power_up_to_idle(void)
 		return -4;
 	}
 
+	/* 2b. Touch Interrupt Pinmux (GPIO 125 Input with Pull-Up) per Sony LK Step T4 */
+	xzs_diag_emit("  2b. Touch INT Pinmux (GPIO125 Input with Pull-Up)...\n");
+	d8p1_write32(TLMM_GPIO_CFG(GPIO_TOUCH_INT_NUM), 0x00000003u);
+	xzs_d8p2_delay_us(10000); /* 10 ms wait per somc,pw-wait-after-on-touch-int-n */
+
 	/* 3. LAB ON (+5.6V) -> poll VREG_OK -> wait 10 ms */
 	xzs_diag_emit("  3. Enable LAB rail (+5.6V)...\n");
 	xzs_spmi_write8(PMI8994_SID_REGULATORS, PMI8994_PERIPH_LAB + LAB_REG_ENABLE_CTL, LAB_ENABLE_CTL_EN);
@@ -967,8 +977,8 @@ xzs_d8m6_panel_power_up_to_idle(void)
 	d8m4_write32(D8M6_REG_DSI_CLK_CTRL, 0x0000003fu);
 	d8m4_write32(D8M6_REG_DSI_TRIG_CTRL, 0x00000004u);
 	d8m4_write32(D8M6_REG_DSI_CTRL, 0x000001f5u);
-	/* Sony LK mdss_dsi_panel_initialize: DSI_LANE_CTRL bit 28 = 1 (force_clk_lane_hs) */
-	d8m4_write32(0x009940acu, 0x10000000u);
+	/* Ensure DSI_LANE_CTRL is 0x00000000 (matching TWRP golden state; no forced HS clk) */
+	d8m4_write32(0x009940acu, 0x00000000u);
 	xzs_d8p2_delay_us(5000); /* 5 ms LP-11 stabilization window */
 	xzs_diag_emit("  F11_LP11_ESTABLISHED=YES\n");
 
@@ -993,8 +1003,8 @@ xzs_d8m6_panel_power_up_to_idle(void)
 	xzs_d8p2_delay_us(2000); // 2 ms
 	xzs_d8m5_set_touch_reset_high();
 	xzs_d8p2_delay_us(5000); // 5 ms
-	/* somc,ewu-wait-after-touch-reset = <0x00> (0 ms per keyaki.dts:1827) */
-	xzs_d8p2_delay_us(100); // 100 us safe pulse edge settling
+	/* Safe in-cell touch settling delay */
+	xzs_d8p2_delay_us(10000); // 10 ms settling
 
 	if (xzs_d8m5_gpio_read_in(GPIO_TOUCH_RESET_NUM) == 0) {
 		xzs_diag_emit("!!! FAIL: GPIO89 failed to release HIGH!\n");

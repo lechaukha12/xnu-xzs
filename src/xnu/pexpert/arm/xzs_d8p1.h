@@ -21,6 +21,7 @@
 #define GPIO_TOUCH_VDDIO_NUM   50u
 #define GPIO_VDDIO_NUM         51u
 #define GPIO_TOUCH_RESET_NUM   89u
+#define GPIO_TOUCH_INT_NUM     125u
 
 extern void xzs_diag_emit(const char *msg);
 extern uint64_t g_xzs_ttbr0;
@@ -329,6 +330,18 @@ xzs_d8p1_run(int mode)
 		return -1;
 	}
 	xzs_diag_emit("[D8-P1] CHECKPOINT D8P1-52 GPIO89_CONFIG_PLAN PASS\n");
+
+	/* D8P1-53: GPIO 125 (Touch Interrupt touch_int_n) Plan & Config
+	 * Target: Input (OE=0), Func=0 (GPIO), Pull=3 (Pull-Up), Drive=2mA (0) -> CFG=0x00000003
+	 * Sony LK Step T4 & keyaki.dts:18198 (mdss_touch_active):
+	 * GPIO 125 must have bias-pull-up active for in-cell touch controller operation.
+	 */
+	xzs_diag_emit("\n[D8-P1] CHECKPOINT D8P1-53 GPIO125_CONFIG_PLAN START\n");
+	xzs_diag_emit("  PLAN: GPIO125 Input with Pull-Up (mdss_touch_active)\n");
+	if (d8p1_audit_write("GPIO125_CFG", TLMM_GPIO_CFG(GPIO_TOUCH_INT_NUM), 0x00000003u, 0x000003ffu, dryrun) != 0) {
+		return -1;
+	}
+	xzs_diag_emit("[D8-P1] CHECKPOINT D8P1-53 GPIO125_CONFIG_PLAN PASS\n");
 
 	/* D8P1-60: Safe State Plan & Verification */
 	xzs_diag_emit("\n[D8-P1] CHECKPOINT D8P1-60 SAFE_STATE_PLAN START\n");
